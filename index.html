@@ -1,0 +1,1404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sound House: Sunday Shift</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <style>
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #020617; /* Deepest slate */
+            overflow: hidden; touch-action: none;
+            user-select: none; -webkit-user-select: none;
+            font-family: 'Inter', sans-serif;
+        }
+        #gameCanvas { display: block; width: 100%; height: 100%; }
+        
+        /* Modern Glassmorphism UI */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+        
+        .ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+        }
+        
+        /* Mobile Controls */
+        #controls-container {
+            position: absolute; bottom: 30px; left: 0; width: 100%;
+            display: flex; justify-content: space-between; padding: 0 40px;
+            pointer-events: none; box-sizing: border-box; z-index: 50;
+        }
+        
+        .touch-zone { pointer-events: auto; }
+        
+        #joystick-base {
+            width: 140px; height: 140px; border-radius: 50%;
+            background: rgba(255,255,255,0.05); backdrop-filter: blur(8px);
+            border: 2px solid rgba(255,255,255,0.15);
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+        }
+        
+        #joystick-knob {
+            width: 60px; height: 60px; border-radius: 50%;
+            background: linear-gradient(135deg, rgba(255,255,255,0.4), rgba(255,255,255,0.1));
+            box-shadow: 0 8px 16px rgba(0,0,0,0.4), inset 0 2px 4px rgba(255,255,255,0.4);
+            transform: translate(0px, 0px); border: 1px solid rgba(255,255,255,0.3);
+        }
+
+        @keyframes alertFlash { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .alert-text { animation: alertFlash 1s infinite; }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Top HUD -->
+    <div class="ui-layer flex flex-col justify-start p-4 z-10">
+        <div class="flex flex-col w-56 md:w-64 pointer-events-auto mt-2 ml-2 md:ml-4">
+            <div class="glass-panel rounded-2xl p-3 md:p-4 w-full relative overflow-hidden">
+                <div class="flex justify-between text-white font-black mb-1 tracking-wide text-sm md:text-base">
+                    <span class="uppercase opacity-80">Time</span>
+                    <span id="time-left-ui" class="text-yellow-400">2:00</span>
+                </div>
+                <div class="flex justify-between text-white font-black mb-1 tracking-wide text-sm md:text-base">
+                    <span class="uppercase opacity-80">Score</span>
+                    <span id="score-text-ui" class="text-green-400">0</span>
+                </div>
+                <div class="flex justify-between text-white font-black mb-2 tracking-wide text-xs md:text-sm">
+                    <span class="uppercase opacity-80">Peace</span>
+                    <span id="meter-text" class="text-blue-300">100%</span>
+                </div>
+                <div class="w-full bg-slate-900/80 rounded-full h-3 md:h-4 overflow-hidden border border-white/10 shadow-inner">
+                    <div id="meter-bar" class="bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 h-full transition-all duration-300 shadow-[0_0_15px_rgba(59,130,246,0.6)]" style="width: 100%"></div>
+                </div>
+                <div id="active-tasks-alert" class="absolute top-1 right-2 text-[10px] text-red-400 font-bold uppercase tracking-wider alert-text hidden">
+                    Emergency
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div id="controls-container">
+        <div class="touch-zone" id="joystick-base">
+            <div id="joystick-knob"></div>
+        </div>
+    </div>
+
+    <!-- Start / Game Over Screens -->
+    <div id="screen-overlay" class="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-md flex-col text-center p-6 pointer-events-auto">
+        <div class="glass-panel p-8 md:p-12 rounded-3xl max-w-lg w-full border-t border-white/20">
+            <h1 id="title-main" class="text-5xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300 mb-2 drop-shadow-[0_5px_5px_rgba(0,0,0,0.8)]">Sound House</h1>
+            <h2 id="title-sub" class="text-2xl md:text-3xl font-bold text-slate-300 mb-6 tracking-widest uppercase">Sunday Shift</h2>
+            
+            <div id="tutorial-text" class="text-slate-300 mb-8 text-left text-sm md:text-base space-y-3 bg-black/30 p-5 rounded-xl border border-white/5">
+                <p><strong>Chad</strong>, keep the service running smoothly!</p>
+                <ul class="list-none space-y-1">
+                    <li class="flex items-center text-xs md:text-sm"><span class="w-3 h-3 rounded-full bg-red-500 mr-2 shadow-[0_0_8px_red]"></span> Medical (Call Medics) <span class="text-green-400 ml-auto">+100 pts</span></li>
+                    <li class="flex items-center text-xs md:text-sm"><span class="w-3 h-3 rounded-full bg-blue-400 mr-2 shadow-[0_0_8px_blue]"></span> Crying Baby (Mother Exits) <span class="text-green-400 ml-auto">+50 pts</span></li>
+                    <li class="flex items-center text-xs md:text-sm"><span class="w-3 h-3 rounded-full bg-yellow-600 mr-2 shadow-[0_0_8px_orange]"></span> Coffee Spill (Mop Up) <span class="text-green-400 ml-auto">+25 pts</span></li>
+                    <li class="flex items-center text-xs md:text-sm"><span class="w-3 h-3 rounded-full bg-purple-500 mr-2 shadow-[0_0_8px_purple]"></span> Stage Rusher (Tackle!) <span class="text-green-400 ml-auto">+150 pts</span></li>
+                    <li class="flex items-center text-xs md:text-sm"><span class="w-3 h-3 rounded-full bg-gray-400 mr-2 shadow-[0_0_8px_gray]"></span> Armed Elder (Disarm!) <span class="text-green-400 ml-auto">+100 pts</span></li>
+                    <li class="flex items-center text-xs md:text-sm"><span class="w-3 h-3 rounded-full bg-yellow-400 mr-2 shadow-[0_0_8px_yellow]"></span> Blackout (Fix Sound Booth) <span class="text-green-400 ml-auto">+75 pts</span></li>
+                </ul>
+                <p class="text-center text-blue-200 mt-4 text-xs font-bold">Touch joystick or arrow keys. Run into emergencies to resolve them!</p>
+            </div>
+
+            <h2 id="score-text" class="hidden text-2xl md:text-3xl font-black text-white mb-6">
+                Survived: <span id="final-time" class="text-cyan-400">0:00</span><br>
+                Score: <span id="final-score" class="text-green-400">0</span>
+            </h2>
+            
+            <div id="end-stats" class="hidden text-slate-300 text-sm md:text-base space-y-2 mb-6 bg-black/40 p-4 rounded-xl border border-white/10 text-left w-full">
+                <!-- Stats injected here via JavaScript -->
+            </div>
+            
+            <button id="btn-start" class="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black rounded-xl text-xl shadow-[0_10px_20px_rgba(0,0,0,0.4)] transition-all hover:scale-105 active:scale-95 border border-white/20">
+                START SERVICE
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI Refs
+        const uiMeterBar = document.getElementById('meter-bar');
+        const uiMeterText = document.getElementById('meter-text');
+        const uiScoreText = document.getElementById('score-text-ui');
+        const uiActiveTasks = document.getElementById('active-tasks-alert');
+        const screenOverlay = document.getElementById('screen-overlay');
+        const titleMain = document.getElementById('title-main');
+        const titleSub = document.getElementById('title-sub');
+        const tutorialText = document.getElementById('tutorial-text');
+        const scoreText = document.getElementById('score-text');
+        const finalTimeText = document.getElementById('final-time');
+        const finalScoreText = document.getElementById('final-score');
+        const btnStart = document.getElementById('btn-start');
+
+        // Palettes for rendering variety
+        const skins = ['#fcd5ce', '#ffb5a7', '#e29578', '#8d5524', '#c68642', '#e0ac69', '#f1c27d', '#5c3a21', '#3d2314'];
+        const hairs = ['#090806', '#2C222B', '#71593E', '#A87A51', '#D6C4C2', '#E1B871', '#4F1A00', '#636363', '#a8a29e'];
+        const shirts = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#64748b', '#ffffff', '#14b8a6', '#0284c7'];
+
+        // Game State Variables
+        let gameState = 'START'; 
+        let lastTime = 0;
+        let gameTimer = 0;
+        let timeLeft = 120;
+        let serviceMeter = 100;
+        let score = 0;
+        let stats = { babies: 0, medics: 0, rushers: 0, old_rushers: 0, coffee: 0, blackouts: 0 };
+        
+        // Environment & Collisions
+        let env = {
+            stageHeight: 0, boothWidth: 0, boothHeight: 0, aisleWidth: 0,
+            boothRect: { x: 0, y: 0, w: 0, h: 0 },
+            chairs: []
+        };
+
+        // Entities
+        let chad = { x: 0, y: 0, radius: 18, speed: 280, angle: -Math.PI/2, walkPhase: 0, hitBoxSize: 14 };
+        let tasks = [];
+        let nextTaskTimer = 3;
+        let nearestTask = null;
+
+        // Audio System (Tone.js)
+        let audioInitialized = false;
+        let kick, bass, bgmSynth, sfxSynth, chordSynth, bgmLoop;
+
+        // Blackout System
+        let blackoutTimer = 20; // Triggers every 20 seconds
+        let isBlackout = false;
+
+        // Visual Polish State
+        let floatingTexts = [];
+        function spawnText(txt, x, y, col) { floatingTexts.push({txt, x, y, col, life: 1.5, maxLife: 1.5}); }
+
+        // Input
+        const keys = { w: false, a: false, s: false, d: false, arrowup: false, arrowdown: false, arrowleft: false, arrowright: false };
+        let joyVector = { x: 0, y: 0 };
+
+        window.addEventListener('resize', resize);
+        window.addEventListener('keydown', e => { 
+            if(e.key.toLowerCase() in keys) keys[e.key.toLowerCase()] = true; 
+        });
+        window.addEventListener('keyup', e => { 
+            if(e.key.toLowerCase() in keys) keys[e.key.toLowerCase()] = false; 
+        });
+
+        // Touch Joystick Logic
+        const joyBase = document.getElementById('joystick-base');
+        const joyKnob = document.getElementById('joystick-knob');
+        let joyActive = false, joyCenter = { x: 0, y: 0 };
+        const joyMax = 40;
+
+        joyBase.addEventListener('touchstart', e => {
+            e.preventDefault(); joyActive = true;
+            let rect = joyBase.getBoundingClientRect();
+            joyCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+            updateJoy(e.touches[0]);
+        }, { passive: false });
+        
+        joyBase.addEventListener('touchmove', e => {
+            if (!joyActive) return;
+            e.preventDefault(); updateJoy(e.touches[0]);
+        }, { passive: false });
+        
+        window.addEventListener('touchend', e => {
+            if (e.changedTouches.length > 0) {
+                joyActive = false; joyVector = { x: 0, y: 0 };
+                joyKnob.style.transform = `translate(0px, 0px)`;
+            }
+        });
+
+        function updateJoy(touch) {
+            let dx = touch.clientX - joyCenter.x;
+            let dy = touch.clientY - joyCenter.y;
+            let dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > joyMax) { dx = (dx/dist)*joyMax; dy = (dy/dist)*joyMax; }
+            joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+            joyVector = { x: dx / joyMax, y: dy / joyMax };
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            let cw = canvas.width, ch = canvas.height;
+
+            env.stageHeight = Math.max(100, ch * 0.15);
+            env.aisleWidth = Math.max(120, cw * 0.25);
+            
+            // Sound booth back right setup
+            env.boothWidth = Math.max(140, cw * 0.2);
+            env.boothHeight = Math.max(100, ch * 0.12);
+            env.boothRect = { x: cw - env.boothWidth, y: ch - env.boothHeight, w: env.boothWidth, h: env.boothHeight };
+            
+            chad.radius = Math.max(14, Math.min(22, cw * 0.025));
+            // MASSIVELY reduced hitbox so Chad easily glides between chairs without getting stuck
+            chad.hitBoxSize = 8; 
+
+            generateChairs(cw, ch);
+        }
+
+        function createChair(x, y, w, h) {
+            return {
+                x: x, y: y, w: w, h: h,
+                isEmpty: false, // The seat starts occupied
+                phaseOffset: Math.random() * Math.PI * 2, // Random offset for breathing animation
+                skin: skins[Math.floor(Math.random() * skins.length)],
+                hair: hairs[Math.floor(Math.random() * hairs.length)],
+                shirt: shirts[Math.floor(Math.random() * shirts.length)]
+            };
+        }
+
+        function generateChairs(cw, ch) {
+            env.chairs = [];
+            let chairW = Math.max(35, cw * 0.08);
+            let chairH = Math.max(35, ch * 0.06);
+            
+            // WIDER GAPS: Guarantees Chad has enough physical space to easily walk between the rows
+            let gapX = chairW * 0.15;
+            let gapY = Math.max(65, chairH * 1.1); 
+            
+            let startY = env.stageHeight + gapY;
+            let endY = ch - chairH - gapY;
+            
+            let leftSpace = (cw / 2) - (env.aisleWidth / 2) - gapX;
+            let colsLeft = Math.floor(leftSpace / (chairW + gapX));
+            let colsRight = colsLeft;
+
+            for (let y = startY; y < endY; y += chairH + gapY) {
+                // Left Block
+                for (let c = 0; c < colsLeft; c++) {
+                    env.chairs.push(createChair(gapX + c * (chairW + gapX), y, chairW, chairH));
+                }
+                // Right Block (Check against Sound Booth bounding box to prevent overlap)
+                for (let c = 0; c < colsRight; c++) {
+                    let cx = cw - gapX - chairW - c * (chairW + gapX);
+                    // Only add if it doesn't intersect booth
+                    if (cx + chairW < env.boothRect.x || y + chairH < env.boothRect.y - 10) {
+                        env.chairs.push(createChair(cx, y, chairW, chairH));
+                    }
+                }
+            }
+        }
+
+        async function initAudio() {
+            if (audioInitialized) return;
+            await Tone.start();
+
+            // Set up Synthesizers
+            kick = new Tone.MembraneSynth({ pitchDecay: 0.05, octaves: 4, oscillator: { type: "sine" } }).toDestination();
+            kick.volume.value = -6;
+
+            bass = new Tone.MonoSynth({
+                oscillator: { type: "sawtooth" },
+                filter: { Q: 2, type: "lowpass", rolloff: -24 },
+                envelope: { attack: 0.01, decay: 0.2, sustain: 0.2, release: 0.2 },
+                filterEnvelope: { attack: 0.01, decay: 0.2, sustain: 0.5, release: 0.2, baseFrequency: 100, octaves: 3 }
+            }).toDestination();
+            bass.volume.value = -12;
+
+            bgmSynth = new Tone.PolySynth(Tone.Synth, {
+                oscillator: { type: "triangle" },
+                envelope: { attack: 0.05, decay: 0.1, sustain: 0.3, release: 1 }
+            }).toDestination();
+            bgmSynth.volume.value = -14;
+
+            sfxSynth = new Tone.MonoSynth({ oscillator: { type: "square" } }).toDestination();
+            sfxSynth.volume.value = -10;
+
+            chordSynth = new Tone.PolySynth(Tone.Synth).toDestination();
+            chordSynth.volume.value = -10;
+
+            // Energetic Modern Rock/Synth Loop (125 BPM)
+            Tone.Transport.bpm.value = 125;
+            let step = 0;
+            bgmLoop = new Tone.Loop((time) => {
+                // Driving Kick
+                if (step % 4 === 0) kick.triggerAttackRelease("C1", "8n", time);
+                
+                // Pulsing 8th note bassline
+                let bassNote = ["C2", "C2", "Eb2", "C2", "F2", "F2", "Eb2", "Bb1"][Math.floor(step / 2) % 8];
+                bass.triggerAttackRelease(bassNote, "16n", time);
+
+                // Off-beat rhythmic chords (Only play if meter is high enough, creating tension when low)
+                if (step % 4 === 2 && serviceMeter > 40 && !isBlackout) {
+                    let chord = step % 16 < 8 ? ["C4", "Eb4", "G4"] : ["F4", "Ab4", "C5"];
+                    bgmSynth.triggerAttackRelease(chord, "8n", time);
+                }
+                step++;
+            }, "16n");
+
+            audioInitialized = true;
+        }
+
+        btnStart.addEventListener('click', async () => {
+            await initAudio();
+            Tone.Transport.stop();
+            bgmLoop.start(0);
+            Tone.Transport.start();
+
+            resize(); 
+            gameState = 'PLAYING';
+            screenOverlay.classList.add('hidden');
+            
+            serviceMeter = 100; gameTimer = 0; timeLeft = 120; score = 0; tasks = []; nextTaskTimer = 2;
+            stats = { babies: 0, medics: 0, rushers: 0, old_rushers: 0, coffee: 0, blackouts: 0 };
+            blackoutTimer = 20; isBlackout = false;
+            
+            chad.x = canvas.width / 2; chad.y = canvas.height - env.boothHeight - 40;
+            chad.walkPhase = 0; chad.angle = -Math.PI/2;
+            
+            lastTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        });
+
+        function endGame(won) {
+            gameState = 'GAMEOVER';
+            
+            // Stop background music and play ending jingle
+            Tone.Transport.stop();
+            if (audioInitialized) {
+                if (won) {
+                    chordSynth.triggerAttackRelease(["C4", "E4", "G4", "C5"], "1n");
+                } else {
+                    sfxSynth.triggerAttackRelease("C3", "4n");
+                    setTimeout(() => sfxSynth.triggerAttackRelease("G2", "4n"), 300);
+                    setTimeout(() => sfxSynth.triggerAttackRelease("C2", "1n"), 600);
+                }
+            }
+
+            screenOverlay.classList.remove('hidden');
+            tutorialText.classList.add('hidden');
+            scoreText.classList.remove('hidden');
+            
+            const endStats = document.getElementById('end-stats');
+            endStats.classList.remove('hidden');
+            
+            if (won) {
+                titleMain.innerText = "SHIFT COMPLETE!";
+                titleMain.className = "text-4xl md:text-5xl font-black text-green-400 mb-2 drop-shadow-md uppercase";
+                titleSub.innerText = "Level 1 Cleared";
+                btnStart.innerText = "PLAY NEXT LEVEL";
+            } else {
+                titleMain.innerText = "SERVICE DISRUPTED";
+                titleMain.className = "text-4xl md:text-5xl font-black text-red-500 mb-2 drop-shadow-md uppercase";
+                titleSub.innerText = "Congregation Distracted";
+                btnStart.innerText = "TRY AGAIN";
+            }
+
+            let m = Math.floor(gameTimer / 60), s = Math.floor(gameTimer % 60).toString().padStart(2, '0');
+            finalTimeText.innerText = `${m}:${s}`;
+            finalScoreText.innerText = score;
+            
+            endStats.innerHTML = `
+                <div class="flex justify-between"><span>Babies Hushed:</span> <span class="font-bold text-white">${stats.babies}</span></div>
+                <div class="flex justify-between"><span>Medical Saves:</span> <span class="font-bold text-white">${stats.medics}</span></div>
+                <div class="flex justify-between"><span>Spills Cleaned:</span> <span class="font-bold text-white">${stats.coffee}</span></div>
+                <div class="flex justify-between"><span>Stage Rushers Stopped:</span> <span class="font-bold text-white">${stats.rushers}</span></div>
+                <div class="flex justify-between"><span>Elders Disarmed:</span> <span class="font-bold text-white">${stats.old_rushers}</span></div>
+                <div class="flex justify-between"><span>Breakers Fixed:</span> <span class="font-bold text-white">${stats.blackouts}</span></div>
+            `;
+        }
+
+        function gameLoop(timestamp) {
+            if (gameState !== 'PLAYING') return;
+            let dt = (timestamp - lastTime) / 1000;
+            if (dt > 0.1) dt = 0.1; 
+            lastTime = timestamp;
+
+            update(dt); draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function spawnTask() {
+            if (isBlackout) return; // Don't spawn normal tasks during blackout
+
+            let r = Math.random(), type = '';
+            if (r < 0.25) type = 'baby';
+            else if (r < 0.50) type = 'medical';
+            else if (r < 0.65) type = 'coffee';
+            else if (r < 0.85) type = 'rusher';
+            else type = 'old_rusher';
+
+            let task = { 
+                type: type, id: Math.random(),
+                radius: 25, trail: [], state: 'active'
+            };
+
+            if (type === 'baby' || type === 'medical') {
+                let empty = env.chairs.filter(c => !c.isEmpty && !tasks.some(t => Math.abs(t.x - (c.x+c.w/2)) < 10 && Math.abs(t.y - (c.y+c.h/2)) < 10));
+                if (empty.length > 0) {
+                    let c = empty[Math.floor(Math.random() * empty.length)];
+                    task.x = c.x + c.w/2; task.y = c.y + c.h/2;
+                    task.chair = c; 
+                } else {
+                    type = 'coffee'; task.type = 'coffee';
+                }
+            } 
+            
+            if (type === 'coffee') {
+                task.x = Math.max(50, Math.random() * (canvas.width - 100));
+                task.y = Math.max(env.stageHeight + 50, Math.random() * (canvas.height - env.stageHeight - 150));
+                // Prevent spawning inside the sound booth
+                if (task.x > env.boothRect.x - 40 && task.y > env.boothRect.y - 40) {
+                    task.x -= 120;
+                }
+            } else if (type === 'rusher' || type === 'old_rusher') {
+                task.x = canvas.width / 2 + (Math.random() * 60 - 30);
+                task.y = canvas.height;
+                // Old rusher moves much slower!
+                task.speed = type === 'rusher' ? Math.max(90, canvas.height * 0.12) : Math.max(30, canvas.height * 0.04);
+                task.skin = skins[Math.floor(Math.random()*skins.length)];
+                
+                // Threat sound effect
+                if (audioInitialized) sfxSynth.triggerAttackRelease("C2", "8n");
+            } else {
+                // Normal spawn pop
+                if (audioInitialized) chordSynth.triggerAttackRelease(["C5", "E5"], "16n");
+            }
+            tasks.push(task);
+        }
+
+        function checkCollisions(newX, newY) {
+            let hit = false;
+            let cx = newX, cy = newY;
+            let r = chad.hitBoxSize;
+
+            for (let c of env.chairs) {
+                if (cx + r > c.x && cx - r < c.x + c.w &&
+                    cy + r > c.y && cy - r < c.y + c.h) {
+                    hit = true; break;
+                }
+            }
+            
+            // Sound Booth Collision
+            if (cx + r > env.boothRect.x && cx - r < env.boothRect.x + env.boothRect.w &&
+                cy + r > env.boothRect.y && cy - r < env.boothRect.y + env.boothRect.h) {
+                hit = true;
+            }
+
+            // Screen Bounds
+            if (cx - r < 0 || cx + r > canvas.width || cy - r < env.stageHeight || cy + r > canvas.height) hit = true;
+            return hit;
+        }
+
+        function update(dt) {
+            gameTimer += dt;
+            if (timeLeft > 0) timeLeft -= dt;
+            
+            // Level Complete Check
+            if (timeLeft <= 0 && serviceMeter > 0) {
+                endGame(true);
+                return;
+            }
+            
+            // Floating Texts Update
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                let ft = floatingTexts[i];
+                ft.life -= dt;
+                ft.y -= 40 * dt; // Float upwards smoothly
+                if (ft.life <= 0) floatingTexts.splice(i, 1);
+            }
+
+            // Trigger Blackout
+            if (!isBlackout) {
+                blackoutTimer -= dt;
+                if (blackoutTimer <= 0) {
+                    isBlackout = true;
+                    
+                    // Power down sound
+                    if (audioInitialized) {
+                        sfxSynth.triggerAttackRelease("C3", "2n");
+                        sfxSynth.frequency.rampTo("C1", 0.5);
+                    }
+
+                    spawnText("The breaker blew!", chad.x, chad.y - 40, "#facc15");
+                    // Inject a blackout task exactly in the sound booth
+                    let t = { 
+                        type: 'blackout', id: 'booth-lights', 
+                        x: env.boothRect.x + env.boothRect.w/2, 
+                        y: env.boothRect.y + env.boothRect.h/2, 
+                        radius: 40, state: 'active' 
+                    };
+                    tasks.push(t);
+                }
+            }
+
+            // Movement
+            let moveX = 0, moveY = 0;
+            if (keys.w || keys.arrowup) moveY -= 1; if (keys.s || keys.arrowdown) moveY += 1;
+            if (keys.a || keys.arrowleft) moveX -= 1; if (keys.d || keys.arrowright) moveX += 1;
+            if (joyActive) { moveX = joyVector.x; moveY = joyVector.y; }
+
+            let mag = Math.sqrt(moveX*moveX + moveY*moveY);
+            if (mag > 1) { moveX /= mag; moveY /= mag; }
+
+            if (mag > 0.1) {
+                let dx = moveX * chad.speed * dt;
+                let dy = moveY * chad.speed * dt;
+
+                if (!checkCollisions(chad.x + dx, chad.y)) chad.x += dx;
+                if (!checkCollisions(chad.x, chad.y + dy)) chad.y += dy;
+
+                chad.angle = Math.atan2(moveY, moveX);
+                chad.walkPhase += mag * dt * 18; 
+            } else {
+                chad.walkPhase *= 0.8; 
+            }
+
+            // Task Spawning
+            if (!isBlackout) {
+                nextTaskTimer -= dt;
+                let spawnRate = Math.max(1.5, 4 - (gameTimer / 40)); 
+                if (nextTaskTimer <= 0) { spawnTask(); nextTaskTimer = spawnRate; }
+            }
+
+            let activeTaskCount = tasks.filter(t => t.state === 'active').length;
+            let hasActiveEmergency = activeTaskCount > 0;
+
+            for (let i = tasks.length - 1; i >= 0; i--) {
+                let t = tasks[i];
+
+                if ((t.type === 'rusher' || t.type === 'old_rusher') && t.state === 'active') {
+                    t.y -= t.speed * dt;
+                    t.trail.unshift({x: t.x, y: t.y});
+                    if (t.trail.length > 6) t.trail.pop();
+                    if (t.y < env.stageHeight) {
+                        serviceMeter -= 25; tasks.splice(i, 1); continue;
+                    }
+                }
+
+                if (t.type === 'baby' && t.state === 'mother_leaving') {
+                    if (t.shhhhTimer > 0) t.shhhhTimer -= dt;
+                    
+                    let targetX = canvas.width / 2;
+                    let speed = 160;
+                    
+                    // Move to the center aisle first, then run out the back
+                    if (Math.abs(t.x - targetX) > 5 && t.y < canvas.height - env.boothHeight) {
+                        t.x += (t.x < targetX ? 1 : -1) * speed * dt;
+                    } else {
+                        t.x = targetX;
+                        t.y += speed * dt; 
+                    }
+                    
+                    if (t.y > canvas.height + 50) {
+                        score += 50;
+                        spawnText("+50", canvas.width/2, canvas.height - 40, "#4ade80");
+                        serviceMeter += 10;
+                        if (serviceMeter > 100) serviceMeter = 100;
+                        t.chair.isEmpty = true; // Mark chair as empty now that she left
+                        tasks.splice(i, 1);
+                        continue;
+                    }
+                }
+
+                if (t.state === 'active') {
+                    let dist = Math.sqrt(Math.pow(chad.x - t.x, 2) + Math.pow(chad.y - t.y, 2));
+                    // Dynamic interaction range based on task size
+                    let interactionRange = chad.radius + t.radius + (t.type === 'rusher' || t.type === 'old_rusher' ? 50 : t.type === 'blackout' ? 60 : 45); 
+                    
+                    if (dist < interactionRange) {
+                        if (t.type === 'medical') {
+                            t.state = 'doctors_arriving';
+                            if (audioInitialized) chordSynth.triggerAttackRelease(["E5", "G5", "C6"], "8n");
+                            stats.medics++;
+                            t.doctors = [
+                                { x: canvas.width/2 - 20, y: canvas.height + 20, offsetX: -20, offsetY: 0, angle: 0 },
+                                { x: canvas.width/2, y: canvas.height + 40, offsetX: 0, offsetY: 20, angle: 0 },
+                                { x: canvas.width/2 + 20, y: canvas.height + 20, offsetX: 20, offsetY: 0, angle: 0 }
+                            ];
+                        } else if (t.type === 'baby') {
+                            t.state = 'mother_leaving';
+                            if (audioInitialized) chordSynth.triggerAttackRelease(["E5", "G5", "C6"], "8n");
+                            t.shhhhTimer = 2.0; // Show Shhhh bubble for 2 seconds
+                            stats.babies++;
+                            // Step out slightly to start her walk
+                            t.x = t.x > canvas.width/2 ? t.x - 20 : t.x + 20; 
+                        } else if (t.type === 'blackout') {
+                            isBlackout = false;
+                            
+                            // Power up sound
+                            if (audioInitialized) {
+                                sfxSynth.triggerAttackRelease("C1", "8n");
+                                sfxSynth.frequency.rampTo("C4", 0.4);
+                            }
+
+                            stats.blackouts++;
+                            blackoutTimer = 20; // reset
+                            score += 75;
+                            spawnText("+75", t.x, t.y - 40, "#4ade80");
+                            serviceMeter += 15;
+                            if (serviceMeter > 100) serviceMeter = 100;
+                            tasks.splice(i, 1);
+                        } else if (t.type === 'coffee') {
+                            if (audioInitialized) chordSynth.triggerAttackRelease(["E5", "G5", "C6"], "8n");
+                            score += 25;
+                            stats.coffee++;
+                            spawnText("Cleaned! +25", t.x, t.y - 30, "#4ade80");
+                            serviceMeter += 5;
+                            if (serviceMeter > 100) serviceMeter = 100;
+                            tasks.splice(i, 1);
+                        } else {
+                            // Rusher or Old Rusher Tackle
+                            if (audioInitialized) sfxSynth.triggerAttackRelease("C2", "16n");
+                            let pts = t.type === 'rusher' ? 150 : 100;
+                            if (t.type === 'rusher') stats.rushers++;
+                            else stats.old_rushers++;
+                            
+                            score += pts;
+                            spawnText(`+${pts}`, t.x, t.y - 40, "#4ade80");
+                            serviceMeter += 15;
+                            if (serviceMeter > 100) serviceMeter = 100;
+                            tasks.splice(i, 1);
+                        }
+                    }
+                }
+            }
+
+            // Doctors Movement Logic
+            for (let i = tasks.length - 1; i >= 0; i--) {
+                let t = tasks[i];
+                if (t.type === 'medical' && t.state !== 'active') {
+                    let speed = 250; 
+                    if (t.state === 'doctors_arriving') {
+                        let allArrived = true;
+                        t.doctors.forEach(doc => {
+                            let tx = t.x + doc.offsetX; let ty = t.y + doc.offsetY;
+                            let dx = tx - doc.x; let dy = ty - doc.y;
+                            let dist = Math.sqrt(dx*dx + dy*dy);
+                            if (dist > 5) {
+                                doc.x += (dx/dist) * speed * dt; doc.y += (dy/dist) * speed * dt;
+                                doc.angle = Math.atan2(dy, dx); allArrived = false;
+                            }
+                        });
+                        if (allArrived) t.state = 'doctors_leaving';
+                    } else if (t.state === 'doctors_leaving') {
+                        let allLeft = true;
+                        let targetY = canvas.height + 80;
+                        t.doctors.forEach(doc => {
+                            let tx = canvas.width/2 + doc.offsetX; let ty = targetY + doc.offsetY;
+                            let dx = tx - doc.x; let dy = ty - doc.y;
+                            let dist = Math.sqrt(dx*dx + dy*dy);
+                            if (dist > 5) {
+                                doc.x += (dx/dist) * speed * dt; doc.y += (dy/dist) * speed * dt;
+                                doc.angle = Math.atan2(dy, dx); allLeft = false;
+                            }
+                        });
+                        t.x = t.doctors[1].x; t.y = t.doctors[1].y - 20;
+                        if (allLeft) {
+                            score += 100; serviceMeter += 20;
+                            if (audioInitialized) chordSynth.triggerAttackRelease(["G5", "C6", "E6"], "4n");
+                            spawnText("+100", canvas.width/2, canvas.height - 40, "#4ade80");
+                            if (serviceMeter > 100) serviceMeter = 100;
+                            t.chair.isEmpty = true; // Mark chair as empty now that patient left
+                            tasks.splice(i, 1);
+                        }
+                    }
+                }
+            }
+
+            // Drain Logic
+            let drainRate = isBlackout ? 6 : (hasActiveEmergency ? 4 + activeTaskCount * 2 : 1.5);
+            serviceMeter -= drainRate * dt;
+
+            // Update UI
+            let mLeft = Math.floor(Math.max(0, timeLeft) / 60);
+            let sLeft = Math.floor(Math.max(0, timeLeft) % 60).toString().padStart(2, '0');
+            document.getElementById('time-left-ui').innerText = `${mLeft}:${sLeft}`;
+            uiScoreText.innerText = score;
+            uiMeterBar.style.width = `${Math.max(0, serviceMeter)}%`;
+            uiMeterText.innerText = `${Math.floor(Math.max(0, serviceMeter))}%`;
+            
+            if (serviceMeter <= 30) uiMeterBar.className = "bg-gradient-to-r from-red-600 to-red-400 h-full transition-all duration-300 shadow-[0_0_15px_rgba(239,68,68,0.8)]";
+            else if (serviceMeter <= 60) uiMeterBar.className = "bg-gradient-to-r from-yellow-500 to-orange-400 h-full transition-all duration-300 shadow-[0_0_15px_rgba(245,158,11,0.8)]";
+            else uiMeterBar.className = "bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 h-full transition-all duration-300 shadow-[0_0_15px_rgba(59,130,246,0.6)]";
+
+            if (hasActiveEmergency) uiActiveTasks.classList.remove('hidden');
+            else uiActiveTasks.classList.add('hidden');
+
+            if (serviceMeter <= 0) endGame(false);
+        }
+
+        function draw() {
+            let cw = canvas.width, ch = canvas.height;
+            let time = Date.now() * 0.001;
+
+            // Base Background
+            ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, cw, ch); 
+
+            // Rich Carpet Texture
+            let carpetGrad = ctx.createRadialGradient(cw/2, ch/2, ch*0.2, cw/2, ch/2, ch);
+            carpetGrad.addColorStop(0, '#1e3a8a'); 
+            carpetGrad.addColorStop(1, '#0f172a'); 
+            ctx.fillStyle = carpetGrad;
+            ctx.fillRect(10, 10, cw-20, ch-20);
+
+            // Carpet Grid (Adds depth)
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+            ctx.lineWidth = 2;
+            for(let x=10; x<cw-10; x+=40) { ctx.beginPath(); ctx.moveTo(x, 10); ctx.lineTo(x, ch-10); ctx.stroke(); }
+            for(let y=10; y<ch-10; y+=40) { ctx.beginPath(); ctx.moveTo(10, y); ctx.lineTo(cw-10, y); ctx.stroke(); }
+            ctx.restore();
+
+            // Rich Wood Stage
+            let stageGrad = ctx.createLinearGradient(0, 10, 0, env.stageHeight);
+            stageGrad.addColorStop(0, '#512a10'); 
+            stageGrad.addColorStop(0.5, '#78350f'); 
+            stageGrad.addColorStop(1, '#3b1a05'); 
+            ctx.fillStyle = stageGrad;
+            ctx.fillRect(10, 10, cw-20, env.stageHeight-10);
+            
+            // Wood Planks
+            ctx.save();
+            ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+            ctx.lineWidth = 2;
+            for(let x=30; x<cw-20; x+=30) { ctx.beginPath(); ctx.moveTo(x, 10); ctx.lineTo(x, env.stageHeight-10); ctx.stroke(); }
+            ctx.restore();
+
+            // Stage Trim
+            ctx.fillStyle = 'rgba(255,255,255,0.15)';
+            ctx.fillRect(10, env.stageHeight - 6, cw-20, 6);
+
+            // --- PASTOR ON STAGE ---
+            ctx.save();
+            ctx.translate(cw/2, env.stageHeight - 55); 
+            
+            let preachBreath = 1 + Math.sin(time * 2) * 0.02;
+            let preachGesture = Math.sin(time * 4) * 6;
+            ctx.scale(preachBreath, preachBreath);
+
+            // Pastor Shadow
+            ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 15; ctx.shadowOffsetY = 8;
+            let suitGrad = ctx.createLinearGradient(0, -15, 0, 15);
+            suitGrad.addColorStop(0, '#0f172a'); suitGrad.addColorStop(0.5, '#1e293b'); suitGrad.addColorStop(1, '#0f172a');
+            
+            // Pastor Shoulders/Body
+            ctx.fillStyle = suitGrad;
+            ctx.beginPath(); 
+            if (ctx.ellipse) ctx.ellipse(0, -4, 26, 16, 0, 0, Math.PI*2);
+            else ctx.roundRect(-26, -20, 52, 32, 12);
+            ctx.fill();
+            ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+
+            // Suit Lapels & White Shirt
+            ctx.fillStyle = '#020617';
+            ctx.beginPath(); ctx.moveTo(-12, -6); ctx.lineTo(-16, 8); ctx.lineTo(0, -2); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(12, -6); ctx.lineTo(16, 8); ctx.lineTo(0, -2); ctx.fill();
+
+            ctx.fillStyle = '#f8fafc';
+            ctx.beginPath(); ctx.moveTo(-9, -4); ctx.lineTo(-10, 6); ctx.lineTo(-1, 8); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(9, -4); ctx.lineTo(10, 6); ctx.lineTo(1, 8); ctx.fill();
+
+            // Red Power Tie
+            let tieGrad = ctx.createLinearGradient(-5, 0, 5, 0);
+            tieGrad.addColorStop(0, '#7f1d1d'); tieGrad.addColorStop(0.5, '#dc2626'); tieGrad.addColorStop(1, '#7f1d1d');
+            ctx.fillStyle = tieGrad;
+            ctx.beginPath(); ctx.moveTo(-4, 6); ctx.lineTo(4, 6); ctx.lineTo(0, 10); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(-3, 10); ctx.lineTo(-5, 18); ctx.lineTo(0, 22); ctx.lineTo(5, 18); ctx.lineTo(3, 10); ctx.fill(); 
+
+            // Animated Arms
+            let sleeveGrad = ctx.createLinearGradient(-30, 0, 30, 0);
+            sleeveGrad.addColorStop(0, '#0f172a'); sleeveGrad.addColorStop(0.5, '#334155'); sleeveGrad.addColorStop(1, '#0f172a');
+            ctx.fillStyle = sleeveGrad;
+            ctx.beginPath(); ctx.roundRect(-30, -2 - preachGesture, 16, 26, 8); ctx.fill();
+            ctx.beginPath(); ctx.roundRect(14, -2 + preachGesture, 16, 26, 8); ctx.fill();
+
+            // Hands
+            let handGrad = ctx.createRadialGradient(0,0,0, 0,0, 6);
+            handGrad.addColorStop(0, '#fcd5ce'); handGrad.addColorStop(1, '#c59186');
+            ctx.fillStyle = handGrad;
+            ctx.beginPath(); ctx.arc(-22, 22 - preachGesture, 6, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(22, 22 + preachGesture, 6, 0, Math.PI*2); ctx.fill();
+
+            // Pastor Head (Brown Hair, Short Beard)
+            let headGrad = ctx.createRadialGradient(0, 2, 0, 0, 0, 12);
+            headGrad.addColorStop(0, '#fcd5ce'); headGrad.addColorStop(0.7, '#e8b4a9'); headGrad.addColorStop(1, '#b07568'); 
+            ctx.fillStyle = headGrad;
+            ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI*2); ctx.fill();
+
+            // Nose
+            ctx.fillStyle = '#d99587';
+            if (ctx.ellipse) { ctx.beginPath(); ctx.ellipse(0, 8, 3, 4, 0, 0, Math.PI*2); ctx.fill(); } 
+
+            // Hair & Beard
+            ctx.fillStyle = '#4a3018'; 
+            ctx.beginPath(); ctx.arc(0, -2, 13, Math.PI*0.85, Math.PI*2.15); ctx.fill(); 
+            ctx.fillStyle = '#3a2008';
+            ctx.beginPath(); ctx.arc(0, 5, 12.5, Math.PI*0.1, Math.PI*0.9); ctx.fill(); 
+            ctx.restore();
+
+            // Podium (3D shaded)
+            ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 12;
+            ctx.fillStyle = '#1e293b'; ctx.fillRect(cw/2 - 32, env.stageHeight - 45, 64, 38);
+            ctx.fillStyle = '#334155'; ctx.fillRect(cw/2 - 27, env.stageHeight - 40, 54, 28);
+            ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+
+            // Sound Booth
+            ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 20;
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(env.boothRect.x, env.boothRect.y, env.boothRect.w, env.boothRect.h);
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#1e293b'; // Desk
+            ctx.fillRect(env.boothRect.x + 10, env.boothRect.y + 10, env.boothRect.w - 20, 35);
+            
+            // Sound Booth Screens
+            if (!isBlackout) {
+                ctx.shadowColor = 'rgba(56, 189, 248, 0.6)'; ctx.shadowBlur = 12;
+                ctx.fillStyle = '#38bdf8';
+                ctx.fillRect(env.boothRect.x + 30, env.boothRect.y + 15, 24, 14);
+                ctx.fillStyle = '#a855f7';
+                ctx.fillRect(env.boothRect.x + 80, env.boothRect.y + 15, 24, 14);
+                ctx.shadowBlur = 0;
+            }
+
+            // Chairs and Congregation
+            env.chairs.forEach(c => {
+                let hasTask = tasks.some(t => t.chair === c);
+                
+                // 3D Chair Base (Shadow + Dark underbelly)
+                ctx.shadowColor = 'rgba(0,0,0,0.7)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 8;
+                ctx.fillStyle = '#334155'; 
+                ctx.beginPath(); ctx.roundRect(c.x, c.y + 4, c.w, c.h, 6); ctx.fill();
+                ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+
+                // Chair Top
+                ctx.fillStyle = '#475569'; 
+                ctx.beginPath(); ctx.roundRect(c.x, c.y, c.w, c.h, 6); ctx.fill();
+                // Chair Cushion Highlight
+                ctx.fillStyle = 'rgba(255,255,255,0.08)';
+                ctx.beginPath(); ctx.roundRect(c.x + 2, c.y + 2, c.w - 4, 10, 4); ctx.fill();
+
+                if (!hasTask && !c.isEmpty) {
+                    ctx.save();
+                    ctx.translate(c.x + c.w/2, c.y + c.h/2);
+                    ctx.rotate(-Math.PI/2); 
+                    
+                    let breath = 1 + Math.sin(time * 2 + c.phaseOffset) * 0.03;
+                    ctx.scale(breath, breath);
+
+                    // Body
+                    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 8;
+                    ctx.fillStyle = c.shirt;
+                    ctx.beginPath(); 
+                    if (ctx.ellipse) ctx.ellipse(-2, 0, c.w*0.28, c.h*0.45, 0, 0, Math.PI*2);
+                    else ctx.roundRect(-c.w*0.25, -c.h*0.4, c.w*0.5, c.h*0.8, 5);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+
+                    // Head & Hair
+                    ctx.fillStyle = c.skin;
+                    ctx.beginPath(); ctx.arc(4, 0, c.w*0.2, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle = c.hair;
+                    ctx.beginPath(); ctx.arc(3, 0, c.w*0.22, Math.PI*0.35, Math.PI*1.65); ctx.fill();
+                    ctx.restore();
+                }
+            });
+
+            // Tasks / Emergencies
+            tasks.forEach(t => {
+                if (t.type === 'blackout') return; 
+                
+                ctx.save();
+                ctx.translate(t.x, t.y);
+
+                if (t.type === 'baby') {
+                    if (t.state === 'active') {
+                        let pulse = (time * 3) % 1;
+                        ctx.fillStyle = `rgba(59, 130, 246, ${0.4 * (1 - pulse)})`; 
+                        ctx.beginPath(); ctx.arc(0, 0, t.radius * 2.5 * pulse, 0, Math.PI*2); ctx.fill();
+                        ctx.rotate(t.x < cw/2 ? Math.sin(time*8)*0.3 : Math.PI + Math.sin(time*8)*0.3); 
+                    } else if (t.state === 'mother_leaving') {
+                        let targetX = cw / 2;
+                        if (Math.abs(t.x - targetX) > 5 && t.y < ch - env.boothHeight) {
+                            // Walking horizontally to aisle
+                            walkAngle = t.x < targetX ? 0 : Math.PI; 
+                        } else {
+                            // Walking down aisle
+                            walkAngle = Math.PI/2;
+                        }
+                        let runWiggle = Math.sin(time * 18) * 0.25;
+                        ctx.rotate(walkAngle + runWiggle);
+                        
+                        // Draw "Shhhh..." Bubble floating above
+                        if (t.shhhhTimer > 0) {
+                            ctx.save();
+                            ctx.rotate(-(walkAngle + runWiggle)); // Un-rotate so it draws upright
+                            ctx.translate(0, -35); // Move up above head
+                            ctx.fillStyle = '#ffffff';
+                            ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 8;
+                            ctx.beginPath(); ctx.roundRect(-25, -12, 50, 20, 8); ctx.fill();
+                            ctx.beginPath(); ctx.moveTo(-5, 8); ctx.lineTo(-10, 15); ctx.lineTo(5, 8); ctx.fill();
+                            ctx.fillStyle = '#000000'; ctx.shadowBlur = 0;
+                            ctx.font = '900 13px Inter'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                            ctx.fillText('Shhhh...', 0, -2);
+                            ctx.restore();
+                        }
+                    }
+
+                    // Mother Body
+                    ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 10;
+                    ctx.fillStyle = t.chair.shirt;
+                    ctx.beginPath(); 
+                    if (ctx.ellipse) ctx.ellipse(-2, 0, 13, 19, 0, 0, Math.PI*2);
+                    else ctx.fillRect(-10, -15, 20, 30);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                    
+                    ctx.fillStyle = t.chair.skin;
+                    ctx.beginPath(); ctx.arc(4, 0, 9, 0, Math.PI*2); ctx.fill();
+                    
+                    // Baby
+                    ctx.fillStyle = '#fbcfe8';
+                    ctx.beginPath(); ctx.roundRect(10, -6, 14, 10, 5); ctx.fill();
+                    ctx.fillStyle = '#fef08a';
+                    ctx.beginPath(); ctx.arc(20, -1, 6, 0, Math.PI*2); ctx.fill();
+
+                    if (t.state === 'active') {
+                        let tp = (time * 5) % 1;
+                        ctx.fillStyle = `rgba(96, 165, 250, ${1-tp})`;
+                        ctx.beginPath(); ctx.arc(20, -12 - tp*15, 4, 0, Math.PI*2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(20, 10 + tp*15, 4, 0, Math.PI*2); ctx.fill();
+
+                        ctx.strokeStyle = `rgba(147, 197, 253, ${1-(time*3%1)})`; ctx.lineWidth = 4;
+                        ctx.beginPath(); ctx.arc(20, -1, 12 + (time*3%1)*25, -1.2, 1.2); ctx.stroke();
+                    }
+                } 
+                else if (t.type === 'medical') {
+                    if (t.state === 'active') {
+                        let pulse = Math.sin(time * 6) * 0.2 + 0.8;
+                        let grad = ctx.createRadialGradient(0,0,0, 0,0, t.radius * 2.5);
+                        grad.addColorStop(0, `rgba(239, 68, 68, ${0.6 * pulse})`);
+                        grad.addColorStop(1, 'rgba(239, 68, 68, 0)');
+                        ctx.fillStyle = grad;
+                        ctx.beginPath(); ctx.arc(0, 0, t.radius * 2.5, 0, Math.PI*2); ctx.fill();
+                    }
+
+                    if (t.state === 'active' || t.state === 'doctors_arriving') {
+                        ctx.rotate(0.8); 
+                        let heave = Math.sin(time * 8) * 0.1;
+                        ctx.scale(1 + heave, 1 - heave);
+                        
+                        ctx.shadowColor = 'rgba(0,0,0,0.7)'; ctx.shadowBlur = 12;
+                        ctx.fillStyle = t.chair.shirt;
+                        ctx.beginPath(); 
+                        if (ctx.ellipse) ctx.ellipse(-6, 0, 14, 20, 0, 0, Math.PI*2);
+                        ctx.fill();
+                        ctx.shadowBlur = 0;
+                        
+                        ctx.fillStyle = t.chair.skin;
+                        ctx.beginPath(); ctx.arc(12, 10, 9, 0, Math.PI*2); ctx.fill();
+                        ctx.scale(1, 1); 
+                    }
+                    
+                    if (t.state === 'active') {
+                        ctx.rotate(-0.8); 
+                        let yOffset = Math.sin(time * 5) * 6;
+                        
+                        ctx.shadowColor = 'rgba(255,0,0,0.9)'; ctx.shadowBlur = 20;
+                        ctx.fillStyle = '#ef4444';
+                        ctx.beginPath(); ctx.roundRect(-8, -35 + yOffset, 16, 40, 4); ctx.fill();
+                        ctx.beginPath(); ctx.roundRect(-20, -23 + yOffset, 40, 16, 4); ctx.fill();
+                        
+                        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5;
+                        ctx.beginPath(); ctx.roundRect(-8, -35 + yOffset, 16, 40, 4); ctx.stroke();
+                        ctx.beginPath(); ctx.roundRect(-20, -23 + yOffset, 40, 16, 4); ctx.stroke();
+                        ctx.shadowBlur = 0;
+                    }
+
+                    if (t.state === 'doctors_leaving') {
+                        ctx.save();
+                        ctx.rotate(Math.PI/2); 
+                        ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 12;
+                        ctx.fillStyle = '#cbd5e1'; // Stretcher
+                        ctx.beginPath(); ctx.roundRect(-14, -28, 28, 56, 4); ctx.fill();
+                        ctx.fillStyle = '#0ea5e9'; // Mattress
+                        ctx.beginPath(); ctx.roundRect(-12, -26, 24, 52, 2); ctx.fill();
+                        ctx.fillStyle = t.chair.shirt; // Patient
+                        ctx.beginPath(); ctx.roundRect(-9, -18, 18, 28, 6); ctx.fill();
+                        ctx.fillStyle = t.chair.skin;
+                        ctx.beginPath(); ctx.arc(0, -18, 8, 0, Math.PI*2); ctx.fill();
+                        ctx.shadowBlur = 0;
+                        ctx.restore();
+                    }
+                }
+                else if (t.type === 'coffee') {
+                    // Pulsing spill aura
+                    let pulse = Math.abs(Math.sin(time * 3)) * 0.2 + 0.8;
+                    let grad = ctx.createRadialGradient(0,0,0, 0,0, t.radius * 1.5);
+                    grad.addColorStop(0, `rgba(139, 69, 19, ${0.4 * pulse})`); 
+                    grad.addColorStop(1, 'rgba(139, 69, 19, 0)');
+                    ctx.fillStyle = grad;
+                    ctx.beginPath(); ctx.arc(0, 0, t.radius * 1.5, 0, Math.PI*2); ctx.fill();
+
+                    // Brown Coffee Puddle
+                    ctx.fillStyle = '#451a03'; 
+                    ctx.beginPath();
+                    if (ctx.ellipse) ctx.ellipse(0, 5, 18, 12, 0.2, 0, Math.PI*2);
+                    else ctx.arc(0, 5, 14, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.beginPath(); ctx.arc(-10, -2, 6, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(12, -4, 8, 0, Math.PI*2); ctx.fill();
+
+                    // Spilled White/Red Coffee Cup
+                    ctx.fillStyle = '#f8fafc'; 
+                    ctx.beginPath(); ctx.roundRect(-8, -12, 16, 12, 2); ctx.fill();
+                    ctx.fillStyle = '#dc2626'; 
+                    ctx.fillRect(-8, -8, 16, 4);
+                }
+                else if (t.type === 'rusher') {
+                    // Motion Blur Trail
+                    t.trail.forEach((pos, i) => {
+                        ctx.globalAlpha = 0.5 - (i * 0.08);
+                        ctx.fillStyle = '#71717a'; 
+                        ctx.beginPath(); ctx.arc(pos.x - t.x, pos.y - t.y, 14, 0, Math.PI*2); ctx.fill();
+                    });
+                    ctx.globalAlpha = 1.0;
+
+                    ctx.rotate(-Math.PI/2); 
+                    let swing = Math.sin(time * 22) * 18; 
+                    
+                    ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 12;
+                    ctx.fillStyle = '#064e3b'; // Backpack
+                    ctx.beginPath(); ctx.roundRect(-26, -12, 14, 24, 5); ctx.fill();
+                    ctx.shadowBlur = 0;
+
+                    ctx.fillStyle = '#3f3f46'; // Jacket
+                    ctx.beginPath(); 
+                    if (ctx.ellipse) ctx.ellipse(-2, 0, 18, 16, 0, 0, Math.PI*2);
+                    else ctx.roundRect(-18, -16, 36, 32, 8);
+                    ctx.fill();
+                    
+                    ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(-30, -18); ctx.lineTo(-30, 18); ctx.lineTo(0, 14); ctx.fill();
+                    
+                    ctx.fillStyle = '#27272a'; // Arms
+                    ctx.beginPath(); ctx.roundRect(0 - swing, -18, 18, 8, 4); ctx.fill();
+                    ctx.beginPath(); ctx.roundRect(0 + swing, 10, 18, 8, 4); ctx.fill();
+                    
+                    // NEW: Sharp Knife in Right Hand
+                    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 4;
+                    ctx.fillStyle = '#18181b'; // Knife Handle
+                    ctx.beginPath(); ctx.roundRect(12 + swing, 12, 10, 4, 1); ctx.fill();
+                    ctx.fillStyle = '#cbd5e1'; // Silver Blade
+                    ctx.beginPath(); ctx.moveTo(22 + swing, 12); ctx.lineTo(36 + swing, 14); ctx.lineTo(22 + swing, 16); ctx.fill();
+                    // Shiny edge reflection
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath(); ctx.moveTo(24 + swing, 13); ctx.lineTo(34 + swing, 14); ctx.lineTo(24 + swing, 14); ctx.fill();
+                    ctx.shadowBlur = 0;
+
+                    ctx.fillStyle = t.skin; // Head
+                    ctx.beginPath(); ctx.arc(9, 0, 10, 0, Math.PI*2); ctx.fill();
+                    
+                    ctx.fillStyle = '#000000'; // Sunglasses
+                    ctx.beginPath(); ctx.roundRect(14, -8, 6, 16, 3); ctx.fill();
+                }
+                else if (t.type === 'old_rusher') {
+                    // Motion Blur Trail
+                    t.trail.forEach((pos, i) => {
+                        ctx.globalAlpha = 0.5 - (i * 0.08);
+                        ctx.fillStyle = '#a1a1aa'; 
+                        ctx.beginPath(); ctx.arc(pos.x - t.x, pos.y - t.y, 14, 0, Math.PI*2); ctx.fill();
+                    });
+                    ctx.globalAlpha = 1.0;
+
+                    ctx.rotate(-Math.PI/2); 
+                    let swing = Math.sin(time * 10) * 6; // Slower old person shuffle
+                    
+                    // Silver Walker (rendered extending out front)
+                    ctx.strokeStyle = '#cbd5e1'; 
+                    ctx.lineWidth = 4;
+                    ctx.lineJoin = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(10 + swing*0.5, -18);
+                    ctx.lineTo(28 + swing*0.5, -18);
+                    ctx.lineTo(32 + swing*0.5, 0); // Front bar
+                    ctx.lineTo(28 + swing*0.5, 18);
+                    ctx.lineTo(10 + swing*0.5, 18);
+                    ctx.stroke();
+                    
+                    // Tennis balls on walker feet
+                    ctx.fillStyle = '#a3e635'; 
+                    ctx.beginPath(); ctx.arc(28 + swing*0.5, -18, 4, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(28 + swing*0.5, 18, 4, 0, Math.PI*2); ctx.fill();
+
+                    // Hunched Sweater Body
+                    ctx.fillStyle = '#d4d4d8'; 
+                    ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 8;
+                    ctx.beginPath(); 
+                    if (ctx.ellipse) ctx.ellipse(-2, 0, 16, 14, 0, 0, Math.PI*2);
+                    else ctx.roundRect(-18, -14, 32, 28, 6);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                    
+                    // Prominent Gun in right hand
+                    ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 6;
+                    // Silver Barrel
+                    ctx.fillStyle = '#e2e8f0'; 
+                    ctx.beginPath(); ctx.roundRect(14 + swing, 7, 24, 8, 2); ctx.fill(); 
+                    // Dark metallic top slide
+                    ctx.fillStyle = '#475569';
+                    ctx.fillRect(16 + swing, 7, 20, 3);
+                    // Wooden Grip
+                    ctx.fillStyle = '#78350f'; 
+                    ctx.beginPath(); ctx.roundRect(12 + swing, 13, 8, 12, 2); ctx.fill();
+                    ctx.shadowBlur = 0;
+
+                    // Head and Grey Hair
+                    ctx.fillStyle = t.skin; 
+                    ctx.beginPath(); ctx.arc(7, 0, 9, 0, Math.PI*2); ctx.fill();
+                    
+                    ctx.fillStyle = '#e2e8f0'; 
+                    ctx.beginPath(); ctx.arc(5, 0, 10, Math.PI*0.5, Math.PI*1.5); ctx.fill();
+                }
+
+                ctx.restore();
+
+                if (t.type === 'medical' && t.doctors) {
+                    t.doctors.forEach(doc => {
+                        ctx.save();
+                        ctx.translate(doc.x, doc.y);
+                        ctx.rotate(doc.angle);
+                        
+                        ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 10;
+                        ctx.fillStyle = '#f8fafc'; // Lab Coat
+                        ctx.beginPath(); 
+                        if (ctx.ellipse) ctx.ellipse(-2, 0, 12, 16, 0, 0, Math.PI*2);
+                        ctx.fill();
+                        ctx.shadowBlur = 0;
+                        
+                        let mSwing = (t.state !== 'active') ? Math.sin(time * 18 + doc.offsetX) * 12 : 0;
+                        ctx.fillStyle = '#f8fafc';
+                        ctx.beginPath(); ctx.roundRect(-2 - mSwing, -18, 16, 7, 3); ctx.fill();
+                        ctx.beginPath(); ctx.roundRect(-2 + mSwing, 11, 16, 7, 3); ctx.fill();
+                        
+                        ctx.fillStyle = '#fcd5ce'; // Head
+                        ctx.beginPath(); ctx.arc(5, 0, 9, 0, Math.PI*2); ctx.fill();
+                        ctx.restore();
+                    });
+                }
+            });
+
+            // Draw Chad
+            ctx.save();
+            let cBob = Math.abs(Math.sin(chad.walkPhase)) * 3.5; // Walk bouncing
+            ctx.translate(chad.x, chad.y - cBob);
+            ctx.rotate(chad.angle); 
+            
+            let cSwing = Math.sin(chad.walkPhase) * 16;
+            
+            ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 8 + cBob; // Dynamic shadow
+            let shirtGrad = ctx.createRadialGradient(-2, 0, 0, -2, 0, 18);
+            shirtGrad.addColorStop(0, '#ffffff'); 
+            shirtGrad.addColorStop(0.6, '#f1f5f9');
+            shirtGrad.addColorStop(1, '#94a3b8'); 
+            
+            ctx.fillStyle = shirtGrad; 
+            ctx.beginPath(); 
+            if (ctx.ellipse) ctx.ellipse(-4, 0, 15, 19, 0, 0, Math.PI*2);
+            else ctx.roundRect(-19, -19, 30, 38, 10);
+            ctx.fill();
+            ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+            
+            // Lanyard String
+            ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(-11, -9); ctx.quadraticCurveTo(0, -11, 6, -6); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(-11, 9); ctx.quadraticCurveTo(0, 11, 6, 6); ctx.stroke();
+
+            // Arms
+            let armGrad = ctx.createLinearGradient(-10, 0, 10, 0);
+            armGrad.addColorStop(0, '#f8fafc'); armGrad.addColorStop(1, '#94a3b8');
+            ctx.fillStyle = armGrad; 
+            ctx.beginPath(); ctx.roundRect(-4 - cSwing, -21, 19, 10, 5); ctx.fill(); 
+            ctx.beginPath(); ctx.roundRect(-4 + cSwing, 11, 19, 10, 5); ctx.fill(); 
+            
+            // Hands
+            let chadHandGrad1 = ctx.createRadialGradient(16 - cSwing, -16, 0, 16 - cSwing, -16, 5);
+            chadHandGrad1.addColorStop(0, '#fcd5ce'); chadHandGrad1.addColorStop(1, '#d9a092');
+            ctx.fillStyle = chadHandGrad1;
+            ctx.beginPath(); ctx.arc(16 - cSwing, -16, 5.5, 0, Math.PI*2); ctx.fill();
+            
+            let chadHandGrad2 = ctx.createRadialGradient(16 + cSwing, 16, 0, 16 + cSwing, 16, 5);
+            chadHandGrad2.addColorStop(0, '#fcd5ce'); chadHandGrad2.addColorStop(1, '#d9a092');
+            ctx.fillStyle = chadHandGrad2;
+            ctx.beginPath(); ctx.arc(16 + cSwing, 16, 5.5, 0, Math.PI*2); ctx.fill();
+
+            // Flashlight (Chad visually pulls it out during a blackout)
+            if (isBlackout) {
+                ctx.save();
+                ctx.translate(16 + cSwing, 16);
+                ctx.rotate(0.2); // Point slightly outward
+                
+                ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 5;
+                ctx.fillStyle = '#111827'; // Dark grey casing
+                ctx.beginPath(); ctx.roundRect(-2, -4, 18, 8, 2); ctx.fill();
+                ctx.fillStyle = '#fbbf24'; // Yellow rim
+                ctx.beginPath(); ctx.roundRect(14, -5, 4, 10, 2); ctx.fill();
+                
+                // Bright glowing bulb
+                ctx.shadowColor = '#fef08a'; ctx.shadowBlur = 12;
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath(); ctx.arc(18, 0, 3, 0, Math.PI*2); ctx.fill();
+                ctx.restore();
+            }
+            
+            // Walkie Talkie
+            ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 5;
+            ctx.strokeStyle = '#1d4ed8'; ctx.lineWidth = 3; 
+            ctx.beginPath(); ctx.moveTo(-6, -10); ctx.quadraticCurveTo(5, 0, -6, 10); ctx.stroke();
+            
+            // ID Badge
+            let badgeGrad = ctx.createLinearGradient(4, -6, 4, 6);
+            badgeGrad.addColorStop(0, '#1e293b'); badgeGrad.addColorStop(1, '#020617');
+            ctx.fillStyle = badgeGrad; 
+            ctx.beginPath(); ctx.roundRect(3, -6, 8, 12, 2); ctx.fill(); 
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx.beginPath(); ctx.roundRect(4, -4, 6, 4, 1); ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Head (Brown Hair, Short Beard)
+            let chadHeadGrad = ctx.createRadialGradient(6, 0, 0, 2, 0, 13);
+            chadHeadGrad.addColorStop(0, '#fcd5ce');
+            chadHeadGrad.addColorStop(0.6, '#e8b4a9');
+            chadHeadGrad.addColorStop(1, '#b07568'); 
+            ctx.fillStyle = chadHeadGrad; 
+            ctx.beginPath(); ctx.arc(4, 0, 12, 0, Math.PI*2); ctx.fill();
+
+            // Nose
+            ctx.fillStyle = '#d99587';
+            if (ctx.ellipse) { ctx.beginPath(); ctx.ellipse(12, 0, 3, 4, 0, 0, Math.PI*2); ctx.fill(); } 
+
+            // Hair
+            ctx.fillStyle = '#4a3018'; 
+            ctx.beginPath(); ctx.arc(2, 0, 13.5, Math.PI*0.4, Math.PI*1.6); ctx.fill();
+            
+            ctx.strokeStyle = '#5c3a21'; ctx.lineWidth = 2.5;
+            ctx.beginPath(); ctx.arc(2, 0, 12, Math.PI*0.5, Math.PI*1.5); ctx.stroke();
+            ctx.strokeStyle = '#3a2008'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(2, 0, 14, Math.PI*0.7, Math.PI*1.3); ctx.stroke();
+            
+            // Beard
+            let beardGrad = ctx.createRadialGradient(9, 0, 5, 9, 0, 13);
+            beardGrad.addColorStop(0, '#3a2008'); beardGrad.addColorStop(1, 'rgba(58, 32, 8, 0)');
+            ctx.fillStyle = beardGrad;
+            ctx.beginPath(); ctx.arc(8, 0, 12, -Math.PI*0.45, Math.PI*0.45); ctx.fill();
+            ctx.restore();
+
+            // Blackout Flashlight Effect using Composite Operations
+            if (isBlackout) {
+                ctx.save();
+                ctx.fillStyle = 'rgba(2, 6, 23, 0.5)'; // 50% dark room
+                ctx.fillRect(0, 0, cw, ch);
+
+                // 1. Punch holes in the darkness (reveals normal floor below)
+                ctx.globalCompositeOperation = 'destination-out';
+                
+                // Directional Cone mask
+                let beamMask = ctx.createRadialGradient(chad.x, chad.y, 20, chad.x, chad.y, 800);
+                beamMask.addColorStop(0, 'rgba(255,255,255,1)');
+                beamMask.addColorStop(0.6, 'rgba(255,255,255,0.9)');
+                beamMask.addColorStop(1, 'rgba(255,255,255,0)');
+                
+                ctx.fillStyle = beamMask;
+                ctx.beginPath();
+                ctx.moveTo(chad.x, chad.y);
+                ctx.arc(chad.x, chad.y, 800, chad.angle - 0.85, chad.angle + 0.85);
+                ctx.fill();
+
+                // Ambient glow mask around Chad
+                let ambientMask = ctx.createRadialGradient(chad.x, chad.y, 10, chad.x, chad.y, 70);
+                ambientMask.addColorStop(0, 'rgba(255,255,255,0.7)');
+                ambientMask.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = ambientMask;
+                ctx.beginPath(); ctx.arc(chad.x, chad.y, 70, 0, Math.PI*2); ctx.fill();
+
+                // 2. Add soft yellow light tint over the revealed areas
+                ctx.globalCompositeOperation = 'source-over'; 
+                
+                let yellowBeam = ctx.createRadialGradient(chad.x, chad.y, 20, chad.x, chad.y, 800);
+                yellowBeam.addColorStop(0, 'rgba(253, 224, 71, 0.35)'); // Glowing Light Yellow
+                yellowBeam.addColorStop(1, 'rgba(253, 224, 71, 0)');
+                
+                ctx.fillStyle = yellowBeam;
+                ctx.beginPath();
+                ctx.moveTo(chad.x, chad.y);
+                ctx.arc(chad.x, chad.y, 800, chad.angle - 0.85, chad.angle + 0.85);
+                ctx.fill();
+
+                let yellowAmbient = ctx.createRadialGradient(chad.x, chad.y, 10, chad.x, chad.y, 70);
+                yellowAmbient.addColorStop(0, 'rgba(253, 224, 71, 0.25)');
+                yellowAmbient.addColorStop(1, 'rgba(253, 224, 71, 0)');
+                ctx.fillStyle = yellowAmbient;
+                ctx.beginPath(); ctx.arc(chad.x, chad.y, 70, 0, Math.PI*2); ctx.fill();
+
+                ctx.restore(); // Restore normal drawing mode
+
+                // Flashing Red Exclamation in Sound Booth
+                let pulse = Math.abs(Math.sin(time * 5));
+                ctx.fillStyle = `rgba(239, 68, 68, ${0.4 + pulse*0.6})`;
+                ctx.shadowColor = 'rgba(239, 68, 68, 1)'; ctx.shadowBlur = 25;
+                ctx.font = '900 85px Inter'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText('!', env.boothRect.x + env.boothRect.w/2, env.boothRect.y + env.boothRect.h/2);
+                ctx.shadowBlur = 0;
+
+                // Bouncing directional arrow pointing to the breaker
+                let arrowY = env.boothRect.y - 50 + Math.sin(time * 8) * 12;
+                let arrowX = env.boothRect.x + env.boothRect.w/2;
+                
+                ctx.save();
+                ctx.translate(arrowX, arrowY);
+                ctx.shadowColor = '#a3e635'; ctx.shadowBlur = 15;
+                ctx.fillStyle = '#a3e635'; // Glowing lime green
+                ctx.beginPath();
+                ctx.moveTo(0, 30);   // Point of the arrow
+                ctx.lineTo(-20, 5);
+                ctx.lineTo(-8, 5);
+                ctx.lineTo(-8, -20);
+                ctx.lineTo(8, -20);
+                ctx.lineTo(8, 5);
+                ctx.lineTo(20, 5);
+                ctx.closePath();
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3; ctx.stroke();
+                ctx.restore();
+
+            } else {
+                // Normal Vignette for cinematic feel
+                let vigGrad = ctx.createRadialGradient(cw/2, ch/2, Math.max(cw,ch)*0.4, cw/2, ch/2, Math.max(cw,ch)*0.9);
+                vigGrad.addColorStop(0, 'rgba(0,0,0,0)');
+                vigGrad.addColorStop(1, 'rgba(0,0,0,0.6)'); 
+                ctx.fillStyle = vigGrad;
+                ctx.fillRect(0, 0, cw, ch);
+            }
+
+            // Floating Score Texts (Rendered on top of everything)
+            floatingTexts.forEach(ft => {
+                ctx.globalAlpha = Math.min(1, ft.life / 0.5); // Fade out near end
+                ctx.fillStyle = ft.col;
+                ctx.font = '900 36px Inter';
+                ctx.textAlign = 'center';
+                ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 5;
+                ctx.fillText(ft.txt, ft.x, ft.y);
+                ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+            });
+            ctx.globalAlpha = 1.0;
+        }
+        
+        resize();
+    </script>
+</body>
+</html>
