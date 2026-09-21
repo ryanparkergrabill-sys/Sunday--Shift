@@ -68,7 +68,7 @@
             <div class="glass-panel rounded-2xl p-3 md:p-4 w-full relative overflow-hidden">
                 <div class="flex justify-between text-white font-black mb-1 tracking-wide text-sm md:text-base">
                     <span class="uppercase opacity-80">Time</span>
-                    <span id="time-left-ui" class="text-yellow-400">2:00</span>
+                    <span id="time-left-ui" class="text-yellow-400">3:00</span>
                 </div>
                 <div class="flex justify-between text-white font-black mb-1 tracking-wide text-sm md:text-base">
                     <span class="uppercase opacity-80">Score</span>
@@ -106,10 +106,12 @@
                 <ul class="list-none space-y-1">
                     <li class="flex items-center text-xs md:text-sm"><span class="w-3 h-3 rounded-full bg-red-500 mr-2 shadow-[0_0_8px_red]"></span> Medical (Call Medics) <span class="text-green-400 ml-auto">+100 pts</span></li>
                     <li class="flex items-center text-xs md:text-sm"><span class="w-3 h-3 rounded-full bg-blue-400 mr-2 shadow-[0_0_8px_blue]"></span> Crying Baby (Mother Exits) <span class="text-green-400 ml-auto">+50 pts</span></li>
-                    <li class="flex items-center text-xs md:text-sm"><span class="w-3 h-3 rounded-full bg-yellow-600 mr-2 shadow-[0_0_8px_orange]"></span> Coffee Spill (Mop Up) <span class="text-green-400 ml-auto">+25 pts</span></li>
-                    <li class="flex items-center text-xs md:text-sm"><span class="w-3 h-3 rounded-full bg-purple-500 mr-2 shadow-[0_0_8px_purple]"></span> Stage Rusher (Tackle!) <span class="text-green-400 ml-auto">+150 pts</span></li>
+                    <li class="flex items-center text-xs md:text-sm"><span class="w-3 h-3 rounded-full bg-green-500 mr-2 shadow-[0_0_8px_green]"></span> New Visitor (Seat them!) <span class="text-green-400 ml-auto">+300 pts</span></li>
+                    <li class="flex items-center text-xs md:text-sm"><span class="w-3 h-3 rounded-full bg-yellow-700 mr-2 shadow-[0_0_8px_orange]"></span> Coffee Spill (Mop Up) <span class="text-green-400 ml-auto">+25 pts</span></li>
                     <li class="flex items-center text-xs md:text-sm"><span class="w-3 h-3 rounded-full bg-gray-400 mr-2 shadow-[0_0_8px_gray]"></span> Armed Elder (Disarm!) <span class="text-green-400 ml-auto">+100 pts</span></li>
-                    <li class="flex items-center text-xs md:text-sm"><span class="w-3 h-3 rounded-full bg-yellow-400 mr-2 shadow-[0_0_8px_yellow]"></span> Blackout (Fix Sound Booth) <span class="text-green-400 ml-auto">+75 pts</span></li>
+                    <li class="flex items-center text-xs md:text-sm"><span class="w-3 h-3 rounded-full bg-purple-500 mr-2 shadow-[0_0_8px_purple]"></span> Stage Rusher (Tackle!) <span class="text-green-400 ml-auto">+150 pts</span></li>
+                    <li class="flex items-center text-xs md:text-sm"><span class="w-3 h-3 rounded-full bg-yellow-400 mr-2 shadow-[0_0_8px_yellow]"></span> Blackout (Breaker Panel) <span class="text-green-400 ml-auto">+75 pts</span></li>
+                    <li class="flex items-center text-xs md:text-sm mt-2 pt-2 border-t border-white/10"><span class="w-3 h-3 rounded-full bg-purple-300 mr-2 shadow-[0_0_8px_purple]"></span> <strong>COMMUNION: Serve Everyone to WIN!</strong></li>
                 </ul>
                 <p class="text-center text-blue-200 mt-4 text-xs font-bold">Touch joystick or arrow keys. Run into emergencies to resolve them!</p>
             </div>
@@ -156,10 +158,12 @@
         let gameState = 'START'; 
         let lastTime = 0;
         let gameTimer = 0;
-        let timeLeft = 120;
+        let timeLeft = 180;
         let serviceMeter = 100;
         let score = 0;
-        let stats = { babies: 0, medics: 0, rushers: 0, old_rushers: 0, coffee: 0, blackouts: 0 };
+        let visitorTimer = 15; 
+        let isCommunionTime = false;
+        let stats = { babies: 0, medics: 0, rushers: 0, old_rushers: 0, coffee: 0, blackouts: 0, visitors: 0, communion: 0 };
         
         // Environment & Collisions
         let env = {
@@ -184,6 +188,7 @@
 
         // Visual Polish State
         let floatingTexts = [];
+        let dustParticles = [];
         function spawnText(txt, x, y, col) { floatingTexts.push({txt, x, y, col, life: 1.5, maxLife: 1.5}); }
 
         // Input
@@ -249,14 +254,24 @@
             // MASSIVELY reduced hitbox so Chad easily glides between chairs without getting stuck
             chad.hitBoxSize = 8; 
 
+            dustParticles = [];
+            for(let i=0; i<60; i++) dustParticles.push({
+                x: Math.random() * cw, 
+                y: Math.random() * ch, 
+                s: Math.random() * 1.5 + 0.5, 
+                speed: Math.random() * 5 + 2, 
+                a: Math.random() * Math.PI * 2
+            });
+
             generateChairs(cw, ch);
         }
 
         function createChair(x, y, w, h) {
             return {
                 x: x, y: y, w: w, h: h,
-                isEmpty: false, // The seat starts occupied
-                phaseOffset: Math.random() * Math.PI * 2, // Random offset for breathing animation
+                isEmpty: Math.random() < 0.15, 
+                isServed: false,
+                phaseOffset: Math.random() * Math.PI * 2, 
                 skin: skins[Math.floor(Math.random() * skins.length)],
                 hair: hairs[Math.floor(Math.random() * hairs.length)],
                 shirt: shirts[Math.floor(Math.random() * shirts.length)]
@@ -355,8 +370,9 @@
             gameState = 'PLAYING';
             screenOverlay.classList.add('hidden');
             
-            serviceMeter = 100; gameTimer = 0; timeLeft = 120; score = 0; tasks = []; nextTaskTimer = 2;
-            stats = { babies: 0, medics: 0, rushers: 0, old_rushers: 0, coffee: 0, blackouts: 0 };
+            serviceMeter = 100; gameTimer = 0; timeLeft = 180; score = 0; tasks = []; nextTaskTimer = 2; visitorTimer = 15;
+            isCommunionTime = false;
+            stats = { babies: 0, medics: 0, rushers: 0, old_rushers: 0, coffee: 0, blackouts: 0, visitors: 0, communion: 0 };
             blackoutTimer = 20; isBlackout = false;
             
             chad.x = canvas.width / 2; chad.y = canvas.height - env.boothHeight - 40;
@@ -366,7 +382,7 @@
             requestAnimationFrame(gameLoop);
         });
 
-        function endGame(won) {
+        function endGame(won, reason = "Congregation Distracted") {
             gameState = 'GAMEOVER';
             
             // Stop background music and play ending jingle
@@ -391,12 +407,12 @@
             if (won) {
                 titleMain.innerText = "SHIFT COMPLETE!";
                 titleMain.className = "text-4xl md:text-5xl font-black text-green-400 mb-2 drop-shadow-md uppercase";
-                titleSub.innerText = "Level 1 Cleared";
+                titleSub.innerText = "Communion Served!";
                 btnStart.innerText = "PLAY NEXT LEVEL";
             } else {
                 titleMain.innerText = "SERVICE DISRUPTED";
                 titleMain.className = "text-4xl md:text-5xl font-black text-red-500 mb-2 drop-shadow-md uppercase";
-                titleSub.innerText = "Congregation Distracted";
+                titleSub.innerText = reason;
                 btnStart.innerText = "TRY AGAIN";
             }
 
@@ -408,9 +424,11 @@
                 <div class="flex justify-between"><span>Babies Hushed:</span> <span class="font-bold text-white">${stats.babies}</span></div>
                 <div class="flex justify-between"><span>Medical Saves:</span> <span class="font-bold text-white">${stats.medics}</span></div>
                 <div class="flex justify-between"><span>Spills Cleaned:</span> <span class="font-bold text-white">${stats.coffee}</span></div>
-                <div class="flex justify-between"><span>Stage Rushers Stopped:</span> <span class="font-bold text-white">${stats.rushers}</span></div>
+                <div class="flex justify-between"><span>Visitors Seated:</span> <span class="font-bold text-green-400">${stats.visitors}</span></div>
+                <div class="flex justify-between"><span>Rushers Stopped:</span> <span class="font-bold text-white">${stats.rushers}</span></div>
                 <div class="flex justify-between"><span>Elders Disarmed:</span> <span class="font-bold text-white">${stats.old_rushers}</span></div>
                 <div class="flex justify-between"><span>Breakers Fixed:</span> <span class="font-bold text-white">${stats.blackouts}</span></div>
+                <div class="flex justify-between mt-2 pt-2 border-t border-white/20"><span>Communion Served:</span> <span class="font-bold text-purple-400">${stats.communion}</span></div>
             `;
         }
 
@@ -500,9 +518,42 @@
             gameTimer += dt;
             if (timeLeft > 0) timeLeft -= dt;
             
-            // Level Complete Check
-            if (timeLeft <= 0 && serviceMeter > 0) {
-                endGame(true);
+            // Communion Trigger at 1:30 left (90 seconds of regular play)
+            if (timeLeft <= 90 && !isCommunionTime) {
+                isCommunionTime = true;
+                spawnText("EVERYONE NEEDS COMMUNION!", canvas.width/2, canvas.height/2 - 50, "#c084fc");
+                if (audioInitialized) chordSynth.triggerAttackRelease(["C5", "F5", "A5", "C6"], "1n");
+            }
+
+            // Communion Logic
+            if (isCommunionTime) {
+                let allServed = true;
+                env.chairs.forEach(c => {
+                    if (!c.isEmpty && !c.isServed) {
+                        allServed = false;
+                        let cx = c.x + c.w/2, cy = c.y + c.h/2;
+                        let dist = Math.sqrt((chad.x - cx)**2 + (chad.y - cy)**2);
+                        if (dist < chad.radius + 45) { // Generous serving radius
+                            c.isServed = true;
+                            score += 10;
+                            stats.communion++;
+                            spawnText("+10", cx, cy - 20, "#e879f9");
+                            if (audioInitialized) sfxSynth.triggerAttackRelease("C6", "32n");
+                        }
+                    }
+                });
+
+                // Instant win if everyone is served!
+                if (allServed) {
+                    endGame(true);
+                    return;
+                }
+            }
+
+            // Level Complete / Fail Check on Timer
+            if (timeLeft <= 0) {
+                if (isCommunionTime) endGame(false, "Communion Incomplete");
+                else endGame(false, "Time Ran Out");
                 return;
             }
             
@@ -513,6 +564,13 @@
                 ft.y -= 40 * dt; // Float upwards smoothly
                 if (ft.life <= 0) floatingTexts.splice(i, 1);
             }
+
+            // Ambient Dust Update
+            dustParticles.forEach(p => {
+                p.y -= p.speed * dt;
+                p.x += Math.sin(gameTimer * 0.5 + p.a) * 0.3;
+                if(p.y < 0) { p.y = canvas.height; p.x = Math.random() * canvas.width; }
+            });
 
             // Trigger Blackout
             if (!isBlackout) {
@@ -565,6 +623,25 @@
                 nextTaskTimer -= dt;
                 let spawnRate = Math.max(1.5, 4 - (gameTimer / 40)); 
                 if (nextTaskTimer <= 0) { spawnTask(); nextTaskTimer = spawnRate; }
+
+                // Visitor Spawner
+                visitorTimer -= dt;
+                if (visitorTimer <= 0) {
+                    let v = {
+                        type: 'visitor', id: Math.random(),
+                        x: canvas.width / 2, y: canvas.height + 30, // Start just off screen
+                        radius: 18, state: 'walking_in',
+                        skin: skins[Math.floor(Math.random()*skins.length)],
+                        hair: hairs[Math.floor(Math.random()*hairs.length)],
+                        shirt: shirts[Math.floor(Math.random()*shirts.length)],
+                        targetY: canvas.height - env.boothHeight - 40, 
+                        angle: -Math.PI/2
+                    };
+                    tasks.push(v);
+                    spawnText("SEAT THE NEW VISITOR!", canvas.width/2, canvas.height/2, "#4ade80");
+                    if (audioInitialized) chordSynth.triggerAttackRelease(["C5", "F5", "A5"], "8n");
+                    visitorTimer = 30; // reset for next visitor
+                }
             }
 
             let activeTaskCount = tasks.filter(t => t.state === 'active').length;
@@ -607,12 +684,66 @@
                     }
                 }
 
-                if (t.state === 'active') {
+                // New Visitor Movement & Seating Logic
+                if (t.type === 'visitor') {
+                    if (t.state === 'walking_in') {
+                        if (t.y > t.targetY) {
+                            t.y -= 100 * dt;
+                            t.angle = -Math.PI/2;
+                        } else {
+                            t.state = 'waiting';
+                        }
+                    } else if (t.state === 'following') {
+                        let dx = chad.x - t.x; let dy = chad.y - t.y;
+                        let dist = Math.sqrt(dx*dx + dy*dy);
+                        if (dist > 45) { // Follow safely behind Chad
+                            t.x += (dx/dist) * 180 * dt;
+                            t.y += (dy/dist) * 180 * dt;
+                            t.angle = Math.atan2(dy, dx);
+                        }
+                        
+                        // Check for empty chairs nearby
+                        let emptyChair = env.chairs.find(c => c.isEmpty && Math.sqrt(Math.pow(c.x + c.w/2 - t.x, 2) + Math.pow(c.y + c.h/2 - t.y, 2)) < 50);
+                        if (emptyChair) {
+                            t.state = 'seating';
+                            t.chair = emptyChair;
+                        }
+                    } else if (t.state === 'seating') {
+                        let cx = t.chair.x + t.chair.w/2;
+                        let cy = t.chair.y + t.chair.h/2;
+                        let dx = cx - t.x; let dy = cy - t.y;
+                        let dist = Math.sqrt(dx*dx + dy*dy);
+                        if (dist > 5) {
+                            t.x += (dx/dist) * 150 * dt;
+                            t.y += (dy/dist) * 150 * dt;
+                            t.angle = Math.atan2(dy, dx);
+                        } else {
+                            // Visitor has reached the seat!
+                            t.chair.isEmpty = false;
+                            t.chair.isServed = false; // They need communion too!
+                            t.chair.skin = t.skin; t.chair.hair = t.hair; t.chair.shirt = t.shirt;
+                            stats.visitors++;
+                            score += 300; serviceMeter += 15;
+                            if (serviceMeter > 100) serviceMeter = 100;
+                            spawnText("+300 Seated!", t.x, t.y - 30, "#4ade80");
+                            if (audioInitialized) chordSynth.triggerAttackRelease(["C5", "E5", "G5"], "8n");
+                            tasks.splice(i, 1);
+                            continue;
+                        }
+                    }
+                }
+
+                if (t.state === 'active' || (t.type === 'visitor' && t.state === 'waiting')) {
                     let dist = Math.sqrt(Math.pow(chad.x - t.x, 2) + Math.pow(chad.y - t.y, 2));
                     // Dynamic interaction range based on task size
                     let interactionRange = chad.radius + t.radius + (t.type === 'rusher' || t.type === 'old_rusher' ? 50 : t.type === 'blackout' ? 60 : 45); 
                     
                     if (dist < interactionRange) {
+                        if (t.type === 'visitor') {
+                            t.state = 'following';
+                            if (audioInitialized) sfxSynth.triggerAttackRelease("C5", "16n");
+                            continue; // Move on without deleting the visitor task
+                        }
                         if (t.type === 'medical') {
                             t.state = 'doctors_arriving';
                             if (audioInitialized) chordSynth.triggerAttackRelease(["E5", "G5", "C6"], "8n");
@@ -716,6 +847,11 @@
             let drainRate = isBlackout ? 6 : (hasActiveEmergency ? 4 + activeTaskCount * 2 : 1.5);
             serviceMeter -= drainRate * dt;
 
+            if (serviceMeter <= 0) {
+                endGame(false, "Congregation Distracted");
+                return;
+            }
+
             // Update UI
             let mLeft = Math.floor(Math.max(0, timeLeft) / 60);
             let sLeft = Math.floor(Math.max(0, timeLeft) % 60).toString().padStart(2, '0');
@@ -750,11 +886,24 @@
 
             // Carpet Grid (Adds depth)
             ctx.save();
-            ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+            ctx.strokeStyle = 'rgba(255,255,255,0.04)';
             ctx.lineWidth = 2;
             for(let x=10; x<cw-10; x+=40) { ctx.beginPath(); ctx.moveTo(x, 10); ctx.lineTo(x, ch-10); ctx.stroke(); }
             for(let y=10; y<ch-10; y+=40) { ctx.beginPath(); ctx.moveTo(10, y); ctx.lineTo(cw-10, y); ctx.stroke(); }
+            
+            // Add luxurious glowing floor lines
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
+            ctx.lineWidth = 4;
+            for(let x=10; x<cw-10; x+=160) { ctx.beginPath(); ctx.moveTo(x, 10); ctx.lineTo(x, ch-10); ctx.stroke(); }
             ctx.restore();
+
+            // Premium Cinematic Dust Particles
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.shadowColor = 'rgba(255, 255, 255, 0.5)'; ctx.shadowBlur = 4;
+            dustParticles.forEach(p => {
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.s, 0, Math.PI*2); ctx.fill();
+            });
+            ctx.shadowBlur = 0;
 
             // Rich Wood Stage
             let stageGrad = ctx.createLinearGradient(0, 10, 0, env.stageHeight);
@@ -771,9 +920,13 @@
             for(let x=30; x<cw-20; x+=30) { ctx.beginPath(); ctx.moveTo(x, 10); ctx.lineTo(x, env.stageHeight-10); ctx.stroke(); }
             ctx.restore();
 
-            // Stage Trim
-            ctx.fillStyle = 'rgba(255,255,255,0.15)';
-            ctx.fillRect(10, env.stageHeight - 6, cw-20, 6);
+            // Premium Glowing Stage Trim
+            ctx.shadowColor = 'rgba(56, 189, 248, 0.6)'; ctx.shadowBlur = 15;
+            ctx.fillStyle = '#0ea5e9'; // Cyan LED strip
+            ctx.fillRect(10, env.stageHeight - 4, cw-20, 4);
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = 'rgba(255,255,255,0.2)'; // White highlight
+            ctx.fillRect(10, env.stageHeight - 6, cw-20, 2);
 
             // --- PASTOR ON STAGE ---
             ctx.save();
@@ -871,6 +1024,13 @@
             env.chairs.forEach(c => {
                 let hasTask = tasks.some(t => t.chair === c);
                 
+                // Communion Glow Ring for Unserved
+                if (isCommunionTime && !c.isEmpty && !c.isServed && !hasTask) {
+                    let cPulse = Math.abs(Math.sin(time * 4 + c.phaseOffset));
+                    ctx.fillStyle = `rgba(216, 180, 254, ${0.15 + cPulse * 0.25})`;
+                    ctx.beginPath(); ctx.arc(c.x + c.w/2, c.y + c.h/2, 24, 0, Math.PI*2); ctx.fill();
+                }
+
                 // 3D Chair Base (Shadow + Dark underbelly)
                 ctx.shadowColor = 'rgba(0,0,0,0.7)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 8;
                 ctx.fillStyle = '#334155'; 
@@ -906,6 +1066,15 @@
                     ctx.beginPath(); ctx.arc(4, 0, c.w*0.2, 0, Math.PI*2); ctx.fill();
                     ctx.fillStyle = c.hair;
                     ctx.beginPath(); ctx.arc(3, 0, c.w*0.22, Math.PI*0.35, Math.PI*1.65); ctx.fill();
+                    
+                    // Communion Cup (Served)
+                    if (c.isServed) {
+                        ctx.shadowColor = 'rgba(232, 121, 249, 0.8)'; ctx.shadowBlur = 8;
+                        ctx.fillStyle = '#e879f9'; // Soft purple glow
+                        ctx.beginPath(); ctx.arc(14, 0, 4, 0, Math.PI*2); ctx.fill(); 
+                        ctx.shadowBlur = 0;
+                    }
+
                     ctx.restore();
                 }
             });
@@ -1025,14 +1194,24 @@
                         ctx.save();
                         ctx.rotate(Math.PI/2); 
                         ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 12;
-                        ctx.fillStyle = '#cbd5e1'; // Stretcher
-                        ctx.beginPath(); ctx.roundRect(-14, -28, 28, 56, 4); ctx.fill();
-                        ctx.fillStyle = '#0ea5e9'; // Mattress
-                        ctx.beginPath(); ctx.roundRect(-12, -26, 24, 52, 2); ctx.fill();
+                        
+                        // Fire Rescue Stokes Basket
+                        ctx.fillStyle = '#991b1b'; // Dark Red
+                        ctx.beginPath(); ctx.roundRect(-16, -30, 32, 60, 8); ctx.fill();
+                        
+                        // Silver Rails
+                        ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 3;
+                        ctx.beginPath(); ctx.roundRect(-14, -28, 28, 56, 6); ctx.stroke();
+                        
+                        // Internal Padding
+                        ctx.fillStyle = '#1e293b'; 
+                        ctx.beginPath(); ctx.roundRect(-10, -24, 20, 48, 4); ctx.fill();
+
                         ctx.fillStyle = t.chair.shirt; // Patient
                         ctx.beginPath(); ctx.roundRect(-9, -18, 18, 28, 6); ctx.fill();
                         ctx.fillStyle = t.chair.skin;
                         ctx.beginPath(); ctx.arc(0, -18, 8, 0, Math.PI*2); ctx.fill();
+                        
                         ctx.shadowBlur = 0;
                         ctx.restore();
                     }
@@ -1073,39 +1252,72 @@
                     ctx.rotate(-Math.PI/2); 
                     let swing = Math.sin(time * 22) * 18; 
                     
-                    ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 12;
-                    ctx.fillStyle = '#064e3b'; // Backpack
-                    ctx.beginPath(); ctx.roundRect(-26, -12, 14, 24, 5); ctx.fill();
+                    // Tactical Backpack
+                    let packGrad = ctx.createLinearGradient(-30, -15, -10, 15);
+                    packGrad.addColorStop(0, '#18181b'); packGrad.addColorStop(1, '#27272a');
+                    ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 15;
+                    ctx.fillStyle = packGrad;
+                    ctx.beginPath(); ctx.roundRect(-30, -14, 18, 28, 6); ctx.fill(); 
+                    ctx.fillStyle = '#09090b'; // Pack pouch
+                    ctx.beginPath(); ctx.roundRect(-32, -10, 6, 20, 2); ctx.fill(); 
                     ctx.shadowBlur = 0;
 
-                    ctx.fillStyle = '#3f3f46'; // Jacket
+                    // Tactical Hoodie / Jacket
+                    let jacketGrad = ctx.createRadialGradient(-5, 0, 0, -5, 0, 22);
+                    jacketGrad.addColorStop(0, '#3f3f46'); jacketGrad.addColorStop(1, '#18181b');
+                    ctx.fillStyle = jacketGrad;
                     ctx.beginPath(); 
-                    if (ctx.ellipse) ctx.ellipse(-2, 0, 18, 16, 0, 0, Math.PI*2);
-                    else ctx.roundRect(-18, -16, 36, 32, 8);
+                    if (ctx.ellipse) ctx.ellipse(-4, 0, 20, 18, 0, 0, Math.PI*2);
+                    else ctx.roundRect(-24, -18, 40, 36, 12);
                     ctx.fill();
                     
-                    ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(-30, -18); ctx.lineTo(-30, 18); ctx.lineTo(0, 14); ctx.fill();
+                    // Hoodie Wrinkles
+                    ctx.strokeStyle = '#27272a'; ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(-15, -14); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(0, 10); ctx.lineTo(-15, 14); ctx.stroke();
                     
-                    ctx.fillStyle = '#27272a'; // Arms
-                    ctx.beginPath(); ctx.roundRect(0 - swing, -18, 18, 8, 4); ctx.fill();
-                    ctx.beginPath(); ctx.roundRect(0 + swing, 10, 18, 8, 4); ctx.fill();
+                    // Arms (Aggressive stance)
+                    ctx.fillStyle = '#27272a'; 
+                    ctx.beginPath(); ctx.roundRect(-5 - swing, -20, 24, 9, 4.5); ctx.fill(); // Left arm
+                    ctx.beginPath(); ctx.roundRect(-5 + swing, 11, 26, 9, 4.5); ctx.fill();  // Right arm holding knife
                     
-                    // NEW: Sharp Knife in Right Hand
-                    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 4;
-                    ctx.fillStyle = '#18181b'; // Knife Handle
-                    ctx.beginPath(); ctx.roundRect(12 + swing, 12, 10, 4, 1); ctx.fill();
-                    ctx.fillStyle = '#cbd5e1'; // Silver Blade
-                    ctx.beginPath(); ctx.moveTo(22 + swing, 12); ctx.lineTo(36 + swing, 14); ctx.lineTo(22 + swing, 16); ctx.fill();
-                    // Shiny edge reflection
-                    ctx.fillStyle = '#ffffff';
-                    ctx.beginPath(); ctx.moveTo(24 + swing, 13); ctx.lineTo(34 + swing, 14); ctx.lineTo(24 + swing, 14); ctx.fill();
+                    // Gloved Hands
+                    ctx.fillStyle = '#18181b'; 
+                    ctx.beginPath(); ctx.arc(18 - swing, -15.5, 5, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(20 + swing, 15.5, 5, 0, Math.PI*2); ctx.fill();
+                    
+                    // Tactical Combat Knife
+                    ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 6;
+                    ctx.fillStyle = '#000000'; // Handle
+                    ctx.fillRect(18 + swing, 13, 8, 5);
+                    ctx.fillStyle = '#3f3f46'; // Blade Guard
+                    ctx.fillRect(26 + swing, 11, 2, 9);
+                    
+                    // Metallic Blade
+                    let bladeGrad = ctx.createLinearGradient(28 + swing, 11, 44 + swing, 15);
+                    bladeGrad.addColorStop(0, '#71717a'); bladeGrad.addColorStop(0.5, '#e4e4e7'); bladeGrad.addColorStop(1, '#3f3f46');
+                    ctx.fillStyle = bladeGrad;
+                    ctx.beginPath(); ctx.moveTo(28 + swing, 13); ctx.lineTo(44 + swing, 13); ctx.lineTo(40 + swing, 17); ctx.lineTo(28 + swing, 17); ctx.fill();
+                    
+                    // Serration detail
+                    ctx.fillStyle = '#18181b';
+                    for(let i=0; i<3; i++) { ctx.fillRect(30 + swing + i*3, 16, 1, 1); }
                     ctx.shadowBlur = 0;
 
-                    ctx.fillStyle = t.skin; // Head
-                    ctx.beginPath(); ctx.arc(9, 0, 10, 0, Math.PI*2); ctx.fill();
+                    // Head (Hooded)
+                    ctx.fillStyle = '#18181b'; // Hood over head
+                    ctx.beginPath(); ctx.arc(2, 0, 13, 0, Math.PI*2); ctx.fill();
                     
-                    ctx.fillStyle = '#000000'; // Sunglasses
-                    ctx.beginPath(); ctx.roundRect(14, -8, 6, 16, 3); ctx.fill();
+                    ctx.fillStyle = t.skin; // Face peering out
+                    ctx.beginPath(); ctx.arc(6, 0, 9, -Math.PI*0.4, Math.PI*0.4); ctx.fill();
+                    
+                    // Wrap-around tactical sunglasses
+                    ctx.fillStyle = '#000000';
+                    ctx.beginPath(); ctx.roundRect(11, -7, 5, 14, 2); ctx.fill();
+                    // Orange reflection on glasses
+                    ctx.fillStyle = '#ea580c';
+                    ctx.beginPath(); ctx.roundRect(13, -5, 2, 4, 1); ctx.fill();
+                    ctx.beginPath(); ctx.roundRect(13, 1, 2, 4, 1); ctx.fill();
                 }
                 else if (t.type === 'old_rusher') {
                     // Motion Blur Trail
@@ -1117,53 +1329,152 @@
                     ctx.globalAlpha = 1.0;
 
                     ctx.rotate(-Math.PI/2); 
-                    let swing = Math.sin(time * 10) * 6; // Slower old person shuffle
+                    let swing = Math.sin(time * 8) * 4; // Very slow old person shuffle
                     
-                    // Silver Walker (rendered extending out front)
-                    ctx.strokeStyle = '#cbd5e1'; 
-                    ctx.lineWidth = 4;
-                    ctx.lineJoin = 'round';
+                    // Shiny Aluminum Walker with 3D Depth
+                    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 8;
+                    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+                    let walkerGrad = ctx.createLinearGradient(10, -20, 35, 20);
+                    walkerGrad.addColorStop(0, '#94a3b8'); walkerGrad.addColorStop(0.5, '#f1f5f9'); walkerGrad.addColorStop(1, '#64748b');
+                    ctx.strokeStyle = walkerGrad; 
+                    ctx.lineWidth = 4.5;
                     ctx.beginPath();
-                    ctx.moveTo(10 + swing*0.5, -18);
-                    ctx.lineTo(28 + swing*0.5, -18);
-                    ctx.lineTo(32 + swing*0.5, 0); // Front bar
-                    ctx.lineTo(28 + swing*0.5, 18);
-                    ctx.lineTo(10 + swing*0.5, 18);
+                    ctx.moveTo(8 + swing, -18);  // Left handle
+                    ctx.lineTo(28 + swing, -19); // Left front leg
+                    ctx.lineTo(34 + swing, -12); // Front curve
+                    ctx.lineTo(34 + swing, 12);  // Front curve
+                    ctx.lineTo(28 + swing, 19);  // Right front leg
+                    ctx.lineTo(8 + swing, 18);   // Right handle
                     ctx.stroke();
                     
-                    // Tennis balls on walker feet
-                    ctx.fillStyle = '#a3e635'; 
-                    ctx.beginPath(); ctx.arc(28 + swing*0.5, -18, 4, 0, Math.PI*2); ctx.fill();
-                    ctx.beginPath(); ctx.arc(28 + swing*0.5, 18, 4, 0, Math.PI*2); ctx.fill();
+                    // Walker Crossbar
+                    ctx.lineWidth = 3;
+                    ctx.beginPath(); ctx.moveTo(25 + swing, -16); ctx.lineTo(25 + swing, 16); ctx.stroke();
 
-                    // Hunched Sweater Body
-                    ctx.fillStyle = '#d4d4d8'; 
-                    ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 8;
+                    // Black rubber grips
+                    ctx.strokeStyle = '#18181b'; ctx.lineWidth = 5.5;
+                    ctx.beginPath(); ctx.moveTo(8 + swing, -18); ctx.lineTo(16 + swing, -18.5); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(8 + swing, 18); ctx.lineTo(16 + swing, 18.5); ctx.stroke();
+
+                    // Neon yellow tennis balls on front legs
+                    let tbGrad = ctx.createRadialGradient(28+swing, -19, 1, 28+swing, -19, 5);
+                    tbGrad.addColorStop(0, '#bef264'); tbGrad.addColorStop(1, '#65a30d');
+                    ctx.fillStyle = tbGrad; ctx.beginPath(); ctx.arc(28 + swing, -19, 5, 0, Math.PI*2); ctx.fill();
+                    
+                    let tbGrad2 = ctx.createRadialGradient(28+swing, 19, 1, 28+swing, 19, 5);
+                    tbGrad2.addColorStop(0, '#bef264'); tbGrad2.addColorStop(1, '#65a30d');
+                    ctx.fillStyle = tbGrad2; ctx.beginPath(); ctx.arc(28 + swing, 19, 5, 0, Math.PI*2); ctx.fill();
+                    ctx.shadowBlur = 0;
+
+                    // Hunched Mustard Cardigan Body
+                    ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 10;
+                    let sweaterGrad = ctx.createRadialGradient(-2, 0, 0, -2, 0, 18);
+                    sweaterGrad.addColorStop(0, '#fcd34d'); sweaterGrad.addColorStop(1, '#b45309'); 
+                    ctx.fillStyle = sweaterGrad; 
                     ctx.beginPath(); 
-                    if (ctx.ellipse) ctx.ellipse(-2, 0, 16, 14, 0, 0, Math.PI*2);
-                    else ctx.roundRect(-18, -14, 32, 28, 6);
+                    if (ctx.ellipse) ctx.ellipse(-4, 0, 18, 15, 0, 0, Math.PI*2);
+                    else ctx.roundRect(-22, -15, 36, 30, 8);
                     ctx.fill();
                     ctx.shadowBlur = 0;
                     
-                    // Prominent Gun in right hand
+                    // Plaid shirt collar peeking out
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath(); ctx.moveTo(2, -4); ctx.lineTo(8, 0); ctx.lineTo(2, 4); ctx.fill();
+
+                    // Arms (Thin, frail)
+                    ctx.fillStyle = '#d97706';
+                    ctx.beginPath(); ctx.roundRect(-6 + swing, -18, 20, 7, 3.5); ctx.fill(); // Left arm
+                    ctx.beginPath(); ctx.roundRect(-6 - swing, 11, 22, 7, 3.5); ctx.fill();  // Right arm
+
+                    // Wrinkled Hands
+                    ctx.fillStyle = t.skin;
+                    ctx.beginPath(); ctx.arc(13 + swing, -15, 4, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(15 - swing, 14.5, 4, 0, Math.PI*2); ctx.fill();
+                    
+                    // Large Heavy Revolver in Right Hand
                     ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 6;
-                    // Silver Barrel
-                    ctx.fillStyle = '#e2e8f0'; 
-                    ctx.beginPath(); ctx.roundRect(14 + swing, 7, 24, 8, 2); ctx.fill(); 
-                    // Dark metallic top slide
-                    ctx.fillStyle = '#475569';
-                    ctx.fillRect(16 + swing, 7, 20, 3);
-                    // Wooden Grip
-                    ctx.fillStyle = '#78350f'; 
-                    ctx.beginPath(); ctx.roundRect(12 + swing, 13, 8, 12, 2); ctx.fill();
+                    let gunGrad = ctx.createLinearGradient(16-swing, 12, 32-swing, 12);
+                    gunGrad.addColorStop(0, '#64748b'); gunGrad.addColorStop(0.5, '#cbd5e1'); gunGrad.addColorStop(1, '#475569');
+                    ctx.fillStyle = gunGrad;
+                    ctx.beginPath(); ctx.roundRect(14 - swing, 12.5, 18, 5, 1); ctx.fill(); // Barrel
+                    
+                    ctx.fillStyle = '#334155'; // Cylinder
+                    ctx.beginPath(); ctx.roundRect(18 - swing, 11, 6, 8, 2); ctx.fill();
+                    
+                    ctx.fillStyle = '#78350f'; // Wooden Grip
+                    ctx.beginPath(); ctx.roundRect(12 - swing, 15, 5, 9, 2); ctx.fill();
                     ctx.shadowBlur = 0;
 
-                    // Head and Grey Hair
+                    // Head
                     ctx.fillStyle = t.skin; 
-                    ctx.beginPath(); ctx.arc(7, 0, 9, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(6, 0, 10, 0, Math.PI*2); ctx.fill();
                     
-                    ctx.fillStyle = '#e2e8f0'; 
-                    ctx.beginPath(); ctx.arc(5, 0, 10, Math.PI*0.5, Math.PI*1.5); ctx.fill();
+                    // Liver spots
+                    ctx.fillStyle = 'rgba(120, 50, 0, 0.2)';
+                    ctx.beginPath(); ctx.arc(4, -3, 1.5, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(6, 4, 1, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(2, 2, 2, 0, Math.PI*2); ctx.fill();
+                    
+                    // Fluffy white ring of hair (male pattern baldness)
+                    ctx.fillStyle = '#f8fafc'; 
+                    ctx.beginPath(); ctx.arc(5, 0, 11, Math.PI*0.6, Math.PI*1.4); ctx.fill();
+                    
+                    // Thick reading glasses
+                    ctx.strokeStyle = '#000000'; ctx.lineWidth = 1.5;
+                    ctx.beginPath(); ctx.roundRect(12, -6, 3, 5, 1); ctx.stroke();
+                    ctx.beginPath(); ctx.roundRect(12, 1, 3, 5, 1); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(12, -1); ctx.lineTo(12, 1); ctx.stroke();
+                    
+                    // Glass reflection
+                    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+                    ctx.fillRect(13, -5, 1, 3); ctx.fillRect(13, 2, 1, 3);
+                }
+                else if (t.type === 'visitor') {
+                    ctx.save();
+                    ctx.rotate(t.angle || -Math.PI/2);
+                    
+                    let swing = (t.state === 'walking_in' || t.state === 'following' || t.state === 'seating') ? Math.sin(time * 15) * 5 : 0;
+                    
+                    // Swinging Arms
+                    ctx.fillStyle = t.shirt;
+                    ctx.beginPath(); ctx.roundRect(-6 - swing, -20, 18, 8, 4); ctx.fill();
+                    ctx.beginPath(); ctx.roundRect(-6 + swing, 12, 18, 8, 4); ctx.fill();
+
+                    // Body
+                    ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 10;
+                    ctx.fillStyle = t.shirt;
+                    ctx.beginPath(); 
+                    if (ctx.ellipse) ctx.ellipse(-2, 0, 13, 19, 0, 0, Math.PI*2);
+                    else ctx.roundRect(-15, -19, 30, 38, 8);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                    
+                    // Head & Hair
+                    ctx.fillStyle = t.skin;
+                    ctx.beginPath(); ctx.arc(4, 0, 10, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle = t.hair;
+                    ctx.beginPath(); ctx.arc(3, 0, 11, Math.PI*0.35, Math.PI*1.65); ctx.fill();
+                    
+                    ctx.restore(); // Restore rotation so sign stays upright
+
+                    // Floating 'SEAT VISITOR' Sign
+                    if (t.state !== 'seating') {
+                        let bob = Math.sin(time * 5) * 5;
+                        ctx.save();
+                        ctx.translate(0, -38 + bob);
+                        
+                        ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 8;
+                        ctx.fillStyle = '#22c55e'; // Bright Green
+                        ctx.beginPath(); ctx.roundRect(-45, -12, 90, 20, 6); ctx.fill();
+                        ctx.beginPath(); ctx.moveTo(-6, 8); ctx.lineTo(0, 16); ctx.lineTo(6, 8); ctx.fill();
+                        
+                        ctx.shadowBlur = 0;
+                        ctx.fillStyle = '#ffffff';
+                        ctx.font = '900 11px Inter'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                        ctx.fillText('SEAT VISITOR', 0, -1);
+                        
+                        ctx.restore();
+                    }
                 }
 
                 ctx.restore();
@@ -1175,19 +1486,47 @@
                         ctx.rotate(doc.angle);
                         
                         ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 10;
-                        ctx.fillStyle = '#f8fafc'; // Lab Coat
+                        
+                        // Fireman Turnout Coat
+                        ctx.fillStyle = '#b45309'; // Tan/Brown Turnout
                         ctx.beginPath(); 
-                        if (ctx.ellipse) ctx.ellipse(-2, 0, 12, 16, 0, 0, Math.PI*2);
+                        if (ctx.ellipse) ctx.ellipse(-2, 0, 13, 17, 0, 0, Math.PI*2);
+                        else ctx.roundRect(-15, -17, 26, 34, 6);
                         ctx.fill();
+                        
+                        // High-Vis Yellow Reflective Stripes
+                        ctx.fillStyle = '#fef08a'; 
+                        ctx.fillRect(-10, -12, 16, 4);
+                        ctx.fillRect(-10, 8, 16, 4);
                         ctx.shadowBlur = 0;
                         
                         let mSwing = (t.state !== 'active') ? Math.sin(time * 18 + doc.offsetX) * 12 : 0;
-                        ctx.fillStyle = '#f8fafc';
-                        ctx.beginPath(); ctx.roundRect(-2 - mSwing, -18, 16, 7, 3); ctx.fill();
-                        ctx.beginPath(); ctx.roundRect(-2 + mSwing, 11, 16, 7, 3); ctx.fill();
                         
-                        ctx.fillStyle = '#fcd5ce'; // Head
-                        ctx.beginPath(); ctx.arc(5, 0, 9, 0, Math.PI*2); ctx.fill();
+                        // Sleeves
+                        ctx.fillStyle = '#b45309';
+                        ctx.beginPath(); ctx.roundRect(-2 - mSwing, -19, 16, 8, 3); ctx.fill();
+                        ctx.beginPath(); ctx.roundRect(-2 + mSwing, 11, 16, 8, 3); ctx.fill();
+                        
+                        // Sleeve Reflective Stripes
+                        ctx.fillStyle = '#fef08a';
+                        ctx.fillRect(8 - mSwing, -19, 4, 8);
+                        ctx.fillRect(8 + mSwing, 11, 4, 8);
+                        
+                        // Fire Helmet
+                        ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 5;
+                        ctx.fillStyle = '#171717'; // Black Brim
+                        ctx.beginPath(); 
+                        if(ctx.ellipse) ctx.ellipse(2, 0, 12, 10, 0, 0, Math.PI*2); 
+                        else ctx.arc(2, 0, 12, 10, 0, Math.PI*2);
+                        ctx.fill();
+                        
+                        ctx.fillStyle = '#0a0a0a'; // Helmet Dome
+                        ctx.beginPath(); ctx.arc(4, 0, 7, 0, Math.PI*2); ctx.fill();
+                        
+                        ctx.fillStyle = '#fbbf24'; // Front Shield
+                        ctx.fillRect(9, -3, 3, 6);
+                        
+                        ctx.shadowBlur = 0;
                         ctx.restore();
                     });
                 }
@@ -1195,6 +1534,14 @@
 
             // Draw Chad
             ctx.save();
+            
+            // Premium Player Glow Aura
+            let playerGlow = ctx.createRadialGradient(chad.x, chad.y, 10, chad.x, chad.y, 45);
+            playerGlow.addColorStop(0, 'rgba(56, 189, 248, 0.2)'); // Soft blue underglow
+            playerGlow.addColorStop(1, 'rgba(56, 189, 248, 0)');
+            ctx.fillStyle = playerGlow;
+            ctx.beginPath(); ctx.arc(chad.x, chad.y, 45, 0, Math.PI*2); ctx.fill();
+
             let cBob = Math.abs(Math.sin(chad.walkPhase)) * 3.5; // Walk bouncing
             ctx.translate(chad.x, chad.y - cBob);
             ctx.rotate(chad.angle); 
@@ -1383,6 +1730,12 @@
                 vigGrad.addColorStop(1, 'rgba(0,0,0,0.6)'); 
                 ctx.fillStyle = vigGrad;
                 ctx.fillRect(0, 0, cw, ch);
+                
+                // Communion Dimming Effect
+                if (isCommunionTime) {
+                    ctx.fillStyle = 'rgba(15, 23, 42, 0.4)'; // Moody purple/dark-blue dim
+                    ctx.fillRect(0, 0, cw, ch);
+                }
             }
 
             // Floating Score Texts (Rendered on top of everything)
