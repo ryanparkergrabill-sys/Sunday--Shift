@@ -171,10 +171,10 @@
             boothRect: { x: 0, y: 0, w: 0, h: 0 },
             chairs: []
         };
+        let pastor = { x: 0, targetX: 0, state: 'preach', timer: 2, walkPhase: 0, dir: 1 };
 
         // Entities
-        let chad = { x: 0, y: 0, radius: 18, speed: 280, angle: -Math.PI/2, walkPhase: 0, hitBoxSize: 14 };
-        let tasks = [];
+        let chad = { x: 0, y: 0, radius: 18, speed: 280, angle: -Math.PI/2, walkPhase: 0, hitBoxSize: 8 };
         let nextTaskTimer = 3;
         let nearestTask = null;
 
@@ -253,6 +253,9 @@
             chad.radius = Math.max(14, Math.min(22, cw * 0.025));
             // MASSIVELY reduced hitbox so Chad easily glides between chairs without getting stuck
             chad.hitBoxSize = 8; 
+            
+            pastor.x = cw / 2;
+            pastor.targetX = pastor.x;
 
             dustParticles = [];
             for(let i=0; i<60; i++) dustParticles.push({
@@ -360,7 +363,14 @@
             audioInitialized = true;
         }
 
-        btnStart.addEventListener('click', async () => {
+        async function handleStart(e) {
+            if (e) e.preventDefault(); // Prevents double-firing if both touchstart and click trigger
+
+            // CRITICAL MOBILE AUDIO FIX:
+            // Mobile browsers (especially iOS Safari) require the AudioContext to be 
+            // initialized directly inside the synchronous path of a user gesture.
+            await Tone.start();
+            
             await initAudio();
             Tone.Transport.stop();
             bgmLoop.start(0);
@@ -380,20 +390,26 @@
             
             lastTime = performance.now();
             requestAnimationFrame(gameLoop);
-        });
+        }
+
+        btnStart.addEventListener('click', handleStart);
+        btnStart.addEventListener('touchstart', handleStart, { passive: false });
 
         function endGame(won, reason = "Congregation Distracted") {
+            if (gameState === 'GAMEOVER') return; // Prevent double-triggering
             gameState = 'GAMEOVER';
             
             // Stop background music and play ending jingle
             Tone.Transport.stop();
             if (audioInitialized) {
+                let now = Tone.now();
                 if (won) {
-                    chordSynth.triggerAttackRelease(["C4", "E4", "G4", "C5"], "1n");
+                    chordSynth.triggerAttackRelease(["C4", "E4", "G4", "C5"], 2, now);
                 } else {
-                    sfxSynth.triggerAttackRelease("C3", "4n");
-                    setTimeout(() => sfxSynth.triggerAttackRelease("G2", "4n"), 300);
-                    setTimeout(() => sfxSynth.triggerAttackRelease("C2", "1n"), 600);
+                    // Use exact Tone.js audio thread scheduling instead of setTimeouts to prevent crashing
+                    sfxSynth.triggerAttackRelease("C3", 0.5, now);
+                    sfxSynth.triggerAttackRelease("G2", 0.5, now + 0.3);
+                    sfxSynth.triggerAttackRelease("C2", 2, now + 0.6);
                 }
             }
 
@@ -478,6 +494,8 @@
             } else if (type === 'rusher' || type === 'old_rusher') {
                 task.x = canvas.width / 2 + (Math.random() * 60 - 30);
                 task.y = canvas.height;
+                task.baseX = task.x;
+                task.time = 0;
                 // Old rusher moves much slower!
                 task.speed = type === 'rusher' ? Math.max(90, canvas.height * 0.12) : Math.max(30, canvas.height * 0.04);
                 task.skin = skins[Math.floor(Math.random()*skins.length)];
@@ -518,6 +536,36 @@
             gameTimer += dt;
             if (timeLeft > 0) timeLeft -= dt;
             
+            // Pastor AI Logic (Walking & Preaching)
+            pastor.timer -= dt;
+            if (pastor.timer <= 0) {
+                let r = Math.random();
+                if (r < 0.4) {
+                    pastor.state = 'walk';
+                    pastor.targetX = (canvas.width / 2) + (Math.random() * 160 - 80); // Pace back and forth
+                    pastor.dir = pastor.targetX > pastor.x ? 1 : -1;
+                    pastor.timer = 1.5 + Math.random() * 2;
+                } else if (r < 0.7) {
+                    pastor.state = 'preach';
+                    pastor.timer = 2 + Math.random() * 3;
+                } else {
+                    pastor.state = 'raise_hands';
+                    pastor.timer = 1.5 + Math.random() * 2;
+                }
+            }
+            
+            if (pastor.state === 'walk') {
+                let pdx = pastor.targetX - pastor.x;
+                if (Math.abs(pdx) > 2) {
+                    pastor.x += Math.sign(pdx) * 45 * dt;
+                    pastor.walkPhase += dt * 12;
+                } else {
+                    pastor.state = 'preach';
+                }
+            } else {
+                pastor.walkPhase = 0; // Stand still
+            }
+
             // Communion Trigger at 1:30 left (90 seconds of regular play)
             if (timeLeft <= 90 && !isCommunionTime) {
                 isCommunionTime = true;
@@ -630,7 +678,7 @@
                     let v = {
                         type: 'visitor', id: Math.random(),
                         x: canvas.width / 2, y: canvas.height + 30, // Start just off screen
-                        radius: 18, state: 'walking_in',
+                        radius: 18, state: 'walking_in', walkPhase: 0,
                         skin: skins[Math.floor(Math.random()*skins.length)],
                         hair: hairs[Math.floor(Math.random()*hairs.length)],
                         shirt: shirts[Math.floor(Math.random()*shirts.length)],
@@ -650,8 +698,22 @@
             for (let i = tasks.length - 1; i >= 0; i--) {
                 let t = tasks[i];
 
-                if ((t.type === 'rusher' || t.type === 'old_rusher') && t.state === 'active') {
+                if (t.type === 'rusher' && t.state === 'active') {
                     t.y -= t.speed * dt;
+                    t.walkPhase = (t.walkPhase || 0) + dt * 25; // Sprinting leg animation
+                    t.trail.unshift({x: t.x, y: t.y});
+                    if (t.trail.length > 6) t.trail.pop();
+                    if (t.y < env.stageHeight) {
+                        serviceMeter -= 25; tasks.splice(i, 1); continue;
+                    }
+                }
+                
+                if (t.type === 'old_rusher' && t.state === 'active') {
+                    t.y -= t.speed * dt;
+                    t.time = (t.time || 0) + dt;
+                    t.walkPhase = (t.walkPhase || 0) + dt * 5; // Slow shuffle
+                    t.x = t.baseX + Math.sin(t.time * 1.5) * 60; // Weave 60px back and forth
+                    
                     t.trail.unshift({x: t.x, y: t.y});
                     if (t.trail.length > 6) t.trail.pop();
                     if (t.y < env.stageHeight) {
@@ -659,26 +721,40 @@
                     }
                 }
 
-                if (t.type === 'baby' && t.state === 'mother_leaving') {
-                    if (t.shhhhTimer > 0) t.shhhhTimer -= dt;
-                    
-                    let targetX = canvas.width / 2;
-                    let speed = 160;
-                    
-                    // Move to the center aisle first, then run out the back
-                    if (Math.abs(t.x - targetX) > 5 && t.y < canvas.height - env.boothHeight) {
-                        t.x += (t.x < targetX ? 1 : -1) * speed * dt;
+                if (t.type === 'baby' && t.state === 'volunteer_arriving') {
+                    let v = t.volunteer;
+                    let dx = t.x - v.x; let dy = t.y - v.y;
+                    let dist = Math.sqrt(dx*dx + dy*dy);
+                    if (dist > 10) {
+                        v.x += (dx/dist) * 220 * dt;
+                        v.y += (dy/dist) * 220 * dt;
+                        v.angle = Math.atan2(dy, dx);
+                        v.walkPhase += dt * 20;
                     } else {
-                        t.x = targetX;
-                        t.y += speed * dt; 
+                        t.state = 'volunteer_leaving';
                     }
+                }
+                
+                if (t.type === 'baby' && t.state === 'volunteer_leaving') {
+                    let v = t.volunteer;
+                    let targetX = canvas.width / 2;
                     
-                    if (t.y > canvas.height + 50) {
+                    if (Math.abs(v.x - targetX) > 10 && v.y < canvas.height - env.boothHeight) {
+                        v.x += (v.x < targetX ? 1 : -1) * 200 * dt;
+                        v.angle = v.x < targetX ? 0 : Math.PI;
+                    } else {
+                        v.x = targetX;
+                        v.y += 200 * dt; 
+                        v.angle = Math.PI/2;
+                    }
+                    v.walkPhase += dt * 20;
+                    
+                    if (v.y > canvas.height + 50) {
                         score += 50;
                         spawnText("+50", canvas.width/2, canvas.height - 40, "#4ade80");
                         serviceMeter += 10;
                         if (serviceMeter > 100) serviceMeter = 100;
-                        t.chair.isEmpty = true; // Mark chair as empty now that she left
+                        // The mother/father originally seated STAYS in their seat!
                         tasks.splice(i, 1);
                         continue;
                     }
@@ -690,8 +766,10 @@
                         if (t.y > t.targetY) {
                             t.y -= 100 * dt;
                             t.angle = -Math.PI/2;
+                            t.walkPhase += dt * 12;
                         } else {
                             t.state = 'waiting';
+                            t.walkPhase = 0;
                         }
                     } else if (t.state === 'following') {
                         let dx = chad.x - t.x; let dy = chad.y - t.y;
@@ -700,6 +778,9 @@
                             t.x += (dx/dist) * 180 * dt;
                             t.y += (dy/dist) * 180 * dt;
                             t.angle = Math.atan2(dy, dx);
+                            t.walkPhase += dt * 18;
+                        } else {
+                            t.walkPhase = 0;
                         }
                         
                         // Check for empty chairs nearby
@@ -717,6 +798,7 @@
                             t.x += (dx/dist) * 150 * dt;
                             t.y += (dy/dist) * 150 * dt;
                             t.angle = Math.atan2(dy, dx);
+                            t.walkPhase += dt * 15;
                         } else {
                             // Visitor has reached the seat!
                             t.chair.isEmpty = false;
@@ -749,17 +831,15 @@
                             if (audioInitialized) chordSynth.triggerAttackRelease(["E5", "G5", "C6"], "8n");
                             stats.medics++;
                             t.doctors = [
-                                { x: canvas.width/2 - 20, y: canvas.height + 20, offsetX: -20, offsetY: 0, angle: 0 },
-                                { x: canvas.width/2, y: canvas.height + 40, offsetX: 0, offsetY: 20, angle: 0 },
-                                { x: canvas.width/2 + 20, y: canvas.height + 20, offsetX: 20, offsetY: 0, angle: 0 }
+                                { x: canvas.width/2 - 20, y: canvas.height + 20, offsetX: -20, offsetY: 0, angle: 0, walkPhase: 0 },
+                                { x: canvas.width/2, y: canvas.height + 40, offsetX: 0, offsetY: 20, angle: 0, walkPhase: 0 },
+                                { x: canvas.width/2 + 20, y: canvas.height + 20, offsetX: 20, offsetY: 0, angle: 0, walkPhase: 0 }
                             ];
                         } else if (t.type === 'baby') {
-                            t.state = 'mother_leaving';
+                            t.state = 'volunteer_arriving'; // Light blue shirt person arrives!
                             if (audioInitialized) chordSynth.triggerAttackRelease(["E5", "G5", "C6"], "8n");
-                            t.shhhhTimer = 2.0; // Show Shhhh bubble for 2 seconds
                             stats.babies++;
-                            // Step out slightly to start her walk
-                            t.x = t.x > canvas.width/2 ? t.x - 20 : t.x + 20; 
+                            t.volunteer = { x: canvas.width/2, y: canvas.height + 20, angle: 0, walkPhase: 0 };
                         } else if (t.type === 'blackout') {
                             isBlackout = false;
                             
@@ -814,7 +894,11 @@
                             let dist = Math.sqrt(dx*dx + dy*dy);
                             if (dist > 5) {
                                 doc.x += (dx/dist) * speed * dt; doc.y += (dy/dist) * speed * dt;
-                                doc.angle = Math.atan2(dy, dx); allArrived = false;
+                                doc.angle = Math.atan2(dy, dx); 
+                                doc.walkPhase += dt * 20;
+                                allArrived = false;
+                            } else {
+                                doc.walkPhase = 0;
                             }
                         });
                         if (allArrived) t.state = 'doctors_leaving';
@@ -827,7 +911,9 @@
                             let dist = Math.sqrt(dx*dx + dy*dy);
                             if (dist > 5) {
                                 doc.x += (dx/dist) * speed * dt; doc.y += (dy/dist) * speed * dt;
-                                doc.angle = Math.atan2(dy, dx); allLeft = false;
+                                doc.angle = Math.atan2(dy, dx);
+                                doc.walkPhase += dt * 20;
+                                allLeft = false;
                             }
                         });
                         t.x = t.doctors[1].x; t.y = t.doctors[1].y - 20;
@@ -866,8 +952,6 @@
 
             if (hasActiveEmergency) uiActiveTasks.classList.remove('hidden');
             else uiActiveTasks.classList.add('hidden');
-
-            if (serviceMeter <= 0) endGame(false);
         }
 
         function draw() {
@@ -884,20 +968,17 @@
             ctx.fillStyle = carpetGrad;
             ctx.fillRect(10, 10, cw-20, ch-20);
 
-            // Carpet Grid (Adds depth)
+            // Carpet Grid
             ctx.save();
             ctx.strokeStyle = 'rgba(255,255,255,0.04)';
             ctx.lineWidth = 2;
             for(let x=10; x<cw-10; x+=40) { ctx.beginPath(); ctx.moveTo(x, 10); ctx.lineTo(x, ch-10); ctx.stroke(); }
             for(let y=10; y<ch-10; y+=40) { ctx.beginPath(); ctx.moveTo(10, y); ctx.lineTo(cw-10, y); ctx.stroke(); }
-            
-            // Add luxurious glowing floor lines
-            ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
-            ctx.lineWidth = 4;
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)'; ctx.lineWidth = 4;
             for(let x=10; x<cw-10; x+=160) { ctx.beginPath(); ctx.moveTo(x, 10); ctx.lineTo(x, ch-10); ctx.stroke(); }
             ctx.restore();
 
-            // Premium Cinematic Dust Particles
+            // Dust Particles
             ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
             ctx.shadowColor = 'rgba(255, 255, 255, 0.5)'; ctx.shadowBlur = 4;
             dustParticles.forEach(p => {
@@ -913,35 +994,45 @@
             ctx.fillStyle = stageGrad;
             ctx.fillRect(10, 10, cw-20, env.stageHeight-10);
             
-            // Wood Planks
             ctx.save();
             ctx.strokeStyle = 'rgba(0,0,0,0.2)';
             ctx.lineWidth = 2;
             for(let x=30; x<cw-20; x+=30) { ctx.beginPath(); ctx.moveTo(x, 10); ctx.lineTo(x, env.stageHeight-10); ctx.stroke(); }
             ctx.restore();
 
-            // Premium Glowing Stage Trim
+            // Glowing Stage Trim
             ctx.shadowColor = 'rgba(56, 189, 248, 0.6)'; ctx.shadowBlur = 15;
-            ctx.fillStyle = '#0ea5e9'; // Cyan LED strip
+            ctx.fillStyle = '#0ea5e9'; 
             ctx.fillRect(10, env.stageHeight - 4, cw-20, 4);
             ctx.shadowBlur = 0;
-            ctx.fillStyle = 'rgba(255,255,255,0.2)'; // White highlight
+            ctx.fillStyle = 'rgba(255,255,255,0.2)'; 
             ctx.fillRect(10, env.stageHeight - 6, cw-20, 2);
 
             // --- PASTOR ON STAGE ---
             ctx.save();
-            ctx.translate(cw/2, env.stageHeight - 55); 
+            ctx.translate(pastor.x, env.stageHeight - 55); 
             
+            // Pastor Legs (Walking Animation)
+            let pLegSwing = Math.sin(pastor.walkPhase) * 12;
+            ctx.fillStyle = '#0f172a'; // Suit pants
+            ctx.beginPath(); ctx.roundRect(-12, -4 + pLegSwing, 8, 14, 3); ctx.fill(); // Left leg
+            ctx.beginPath(); ctx.roundRect(4, -4 - pLegSwing, 8, 14, 3); ctx.fill(); // Right leg
+            // Shoes
+            ctx.fillStyle = '#000000';
+            ctx.beginPath(); ctx.roundRect(-13, 8 + pLegSwing, 10, 6, 2); ctx.fill();
+            ctx.beginPath(); ctx.roundRect(3, 8 - pLegSwing, 10, 6, 2); ctx.fill();
+
             let preachBreath = 1 + Math.sin(time * 2) * 0.02;
-            let preachGesture = Math.sin(time * 4) * 6;
+            let preachGesture = (pastor.state === 'preach' || pastor.state === 'walk') ? Math.sin(time * 4) * 6 : 0;
+            let pBob = Math.abs(Math.sin(pastor.walkPhase)) * 3;
+            ctx.translate(0, -pBob);
             ctx.scale(preachBreath, preachBreath);
 
-            // Pastor Shadow
+            // Pastor Shadow & Body
             ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 15; ctx.shadowOffsetY = 8;
             let suitGrad = ctx.createLinearGradient(0, -15, 0, 15);
             suitGrad.addColorStop(0, '#0f172a'); suitGrad.addColorStop(0.5, '#1e293b'); suitGrad.addColorStop(1, '#0f172a');
             
-            // Pastor Shoulders/Body
             ctx.fillStyle = suitGrad;
             ctx.beginPath(); 
             if (ctx.ellipse) ctx.ellipse(0, -4, 26, 16, 0, 0, Math.PI*2);
@@ -969,22 +1060,35 @@
             let sleeveGrad = ctx.createLinearGradient(-30, 0, 30, 0);
             sleeveGrad.addColorStop(0, '#0f172a'); sleeveGrad.addColorStop(0.5, '#334155'); sleeveGrad.addColorStop(1, '#0f172a');
             ctx.fillStyle = sleeveGrad;
-            ctx.beginPath(); ctx.roundRect(-30, -2 - preachGesture, 16, 26, 8); ctx.fill();
-            ctx.beginPath(); ctx.roundRect(14, -2 + preachGesture, 16, 26, 8); ctx.fill();
+            
+            if (pastor.state === 'raise_hands') {
+                // Arms up in worship/preaching
+                ctx.beginPath(); ctx.roundRect(-30, -22, 12, 26, 6); ctx.fill(); // Left arm up
+                ctx.beginPath(); ctx.roundRect(18, -22, 12, 26, 6); ctx.fill();  // Right arm up
+                
+                let handGrad = ctx.createRadialGradient(0,0,0, 0,0, 6);
+                handGrad.addColorStop(0, '#fcd5ce'); handGrad.addColorStop(1, '#c59186');
+                ctx.fillStyle = handGrad;
+                ctx.beginPath(); ctx.arc(-24, -24, 6, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(24, -24, 6, 0, Math.PI*2); ctx.fill();
+            } else {
+                let pArmSwing = pastor.state === 'walk' ? Math.sin(pastor.walkPhase) * 10 : 0;
+                ctx.beginPath(); ctx.roundRect(-30, -2 - preachGesture - pArmSwing, 16, 26, 8); ctx.fill();
+                ctx.beginPath(); ctx.roundRect(14, -2 + preachGesture + pArmSwing, 16, 26, 8); ctx.fill();
 
-            // Hands
-            let handGrad = ctx.createRadialGradient(0,0,0, 0,0, 6);
-            handGrad.addColorStop(0, '#fcd5ce'); handGrad.addColorStop(1, '#c59186');
-            ctx.fillStyle = handGrad;
-            ctx.beginPath(); ctx.arc(-22, 22 - preachGesture, 6, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(22, 22 + preachGesture, 6, 0, Math.PI*2); ctx.fill();
+                let handGrad = ctx.createRadialGradient(0,0,0, 0,0, 6);
+                handGrad.addColorStop(0, '#fcd5ce'); handGrad.addColorStop(1, '#c59186');
+                ctx.fillStyle = handGrad;
+                ctx.beginPath(); ctx.arc(-22, 22 - preachGesture - pArmSwing, 6, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(22, 22 + preachGesture + pArmSwing, 6, 0, Math.PI*2); ctx.fill();
+            }
 
             // Pastor Head (Brown Hair, Short Beard)
             let headGrad = ctx.createRadialGradient(0, 2, 0, 0, 0, 12);
             headGrad.addColorStop(0, '#fcd5ce'); headGrad.addColorStop(0.7, '#e8b4a9'); headGrad.addColorStop(1, '#b07568'); 
             ctx.fillStyle = headGrad;
             ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI*2); ctx.fill();
-
+            
             // Nose
             ctx.fillStyle = '#d99587';
             if (ctx.ellipse) { ctx.beginPath(); ctx.ellipse(0, 8, 3, 4, 0, 0, Math.PI*2); ctx.fill(); } 
@@ -1007,7 +1111,7 @@
             ctx.fillStyle = '#0f172a';
             ctx.fillRect(env.boothRect.x, env.boothRect.y, env.boothRect.w, env.boothRect.h);
             ctx.shadowBlur = 0;
-            ctx.fillStyle = '#1e293b'; // Desk
+            ctx.fillStyle = '#1e293b'; 
             ctx.fillRect(env.boothRect.x + 10, env.boothRect.y + 10, env.boothRect.w - 20, 35);
             
             // Sound Booth Screens
@@ -1024,27 +1128,23 @@
             env.chairs.forEach(c => {
                 let hasTask = tasks.some(t => t.chair === c);
                 
-                // Communion Glow Ring for Unserved
                 if (isCommunionTime && !c.isEmpty && !c.isServed && !hasTask) {
                     let cPulse = Math.abs(Math.sin(time * 4 + c.phaseOffset));
                     ctx.fillStyle = `rgba(216, 180, 254, ${0.15 + cPulse * 0.25})`;
                     ctx.beginPath(); ctx.arc(c.x + c.w/2, c.y + c.h/2, 24, 0, Math.PI*2); ctx.fill();
                 }
 
-                // 3D Chair Base (Shadow + Dark underbelly)
                 ctx.shadowColor = 'rgba(0,0,0,0.7)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 8;
                 ctx.fillStyle = '#334155'; 
                 ctx.beginPath(); ctx.roundRect(c.x, c.y + 4, c.w, c.h, 6); ctx.fill();
                 ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
 
-                // Chair Top
                 ctx.fillStyle = '#475569'; 
                 ctx.beginPath(); ctx.roundRect(c.x, c.y, c.w, c.h, 6); ctx.fill();
-                // Chair Cushion Highlight
                 ctx.fillStyle = 'rgba(255,255,255,0.08)';
                 ctx.beginPath(); ctx.roundRect(c.x + 2, c.y + 2, c.w - 4, 10, 4); ctx.fill();
 
-                if (!hasTask && !c.isEmpty) {
+                if (!c.isEmpty) { // Draw person even if task exists (for baby they stay seated)
                     ctx.save();
                     ctx.translate(c.x + c.w/2, c.y + c.h/2);
                     ctx.rotate(-Math.PI/2); 
@@ -1052,7 +1152,6 @@
                     let breath = 1 + Math.sin(time * 2 + c.phaseOffset) * 0.03;
                     ctx.scale(breath, breath);
 
-                    // Body
                     ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 8;
                     ctx.fillStyle = c.shirt;
                     ctx.beginPath(); 
@@ -1061,20 +1160,17 @@
                     ctx.fill();
                     ctx.shadowBlur = 0;
 
-                    // Head & Hair
                     ctx.fillStyle = c.skin;
                     ctx.beginPath(); ctx.arc(4, 0, c.w*0.2, 0, Math.PI*2); ctx.fill();
                     ctx.fillStyle = c.hair;
                     ctx.beginPath(); ctx.arc(3, 0, c.w*0.22, Math.PI*0.35, Math.PI*1.65); ctx.fill();
                     
-                    // Communion Cup (Served)
                     if (c.isServed) {
                         ctx.shadowColor = 'rgba(232, 121, 249, 0.8)'; ctx.shadowBlur = 8;
-                        ctx.fillStyle = '#e879f9'; // Soft purple glow
+                        ctx.fillStyle = '#e879f9'; 
                         ctx.beginPath(); ctx.arc(14, 0, 4, 0, Math.PI*2); ctx.fill(); 
                         ctx.shadowBlur = 0;
                     }
-
                     ctx.restore();
                 }
             });
@@ -1091,61 +1187,92 @@
                         let pulse = (time * 3) % 1;
                         ctx.fillStyle = `rgba(59, 130, 246, ${0.4 * (1 - pulse)})`; 
                         ctx.beginPath(); ctx.arc(0, 0, t.radius * 2.5 * pulse, 0, Math.PI*2); ctx.fill();
-                        ctx.rotate(t.x < cw/2 ? Math.sin(time*8)*0.3 : Math.PI + Math.sin(time*8)*0.3); 
-                    } else if (t.state === 'mother_leaving') {
-                        let targetX = cw / 2;
-                        if (Math.abs(t.x - targetX) > 5 && t.y < ch - env.boothHeight) {
-                            // Walking horizontally to aisle
-                            walkAngle = t.x < targetX ? 0 : Math.PI; 
-                        } else {
-                            // Walking down aisle
-                            walkAngle = Math.PI/2;
-                        }
-                        let runWiggle = Math.sin(time * 18) * 0.25;
-                        ctx.rotate(walkAngle + runWiggle);
                         
-                        // Draw "Shhhh..." Bubble floating above
-                        if (t.shhhhTimer > 0) {
-                            ctx.save();
-                            ctx.rotate(-(walkAngle + runWiggle)); // Un-rotate so it draws upright
-                            ctx.translate(0, -35); // Move up above head
-                            ctx.fillStyle = '#ffffff';
-                            ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 8;
-                            ctx.beginPath(); ctx.roundRect(-25, -12, 50, 20, 8); ctx.fill();
-                            ctx.beginPath(); ctx.moveTo(-5, 8); ctx.lineTo(-10, 15); ctx.lineTo(5, 8); ctx.fill();
-                            ctx.fillStyle = '#000000'; ctx.shadowBlur = 0;
-                            ctx.font = '900 13px Inter'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                            ctx.fillText('Shhhh...', 0, -2);
-                            ctx.restore();
-                        }
-                    }
-
-                    // Mother Body
-                    ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 10;
-                    ctx.fillStyle = t.chair.shirt;
-                    ctx.beginPath(); 
-                    if (ctx.ellipse) ctx.ellipse(-2, 0, 13, 19, 0, 0, Math.PI*2);
-                    else ctx.fillRect(-10, -15, 20, 30);
-                    ctx.fill();
-                    ctx.shadowBlur = 0;
-                    
-                    ctx.fillStyle = t.chair.skin;
-                    ctx.beginPath(); ctx.arc(4, 0, 9, 0, Math.PI*2); ctx.fill();
-                    
-                    // Baby
-                    ctx.fillStyle = '#fbcfe8';
-                    ctx.beginPath(); ctx.roundRect(10, -6, 14, 10, 5); ctx.fill();
-                    ctx.fillStyle = '#fef08a';
-                    ctx.beginPath(); ctx.arc(20, -1, 6, 0, Math.PI*2); ctx.fill();
-
-                    if (t.state === 'active') {
+                        // Realistic crying baby rendering (on lap of parent)
+                        ctx.rotate(-Math.PI/2);
+                        // Baby Blanket
+                        ctx.fillStyle = '#fbcfe8'; // Pink blanket
+                        ctx.beginPath(); ctx.roundRect(5, -8, 16, 16, 6); ctx.fill();
+                        
+                        // Baby Head & open crying mouth
+                        ctx.fillStyle = '#fef08a';
+                        ctx.beginPath(); ctx.arc(18, 0, 6, 0, Math.PI*2); ctx.fill();
+                        ctx.fillStyle = '#000000'; // Mouth
+                        ctx.beginPath(); ctx.ellipse(20, 0, 2, 3, 0, 0, Math.PI*2); ctx.fill();
+                        
+                        // Crying Tears / Sound waves
                         let tp = (time * 5) % 1;
-                        ctx.fillStyle = `rgba(96, 165, 250, ${1-tp})`;
-                        ctx.beginPath(); ctx.arc(20, -12 - tp*15, 4, 0, Math.PI*2); ctx.fill();
-                        ctx.beginPath(); ctx.arc(20, 10 + tp*15, 4, 0, Math.PI*2); ctx.fill();
-
-                        ctx.strokeStyle = `rgba(147, 197, 253, ${1-(time*3%1)})`; ctx.lineWidth = 4;
-                        ctx.beginPath(); ctx.arc(20, -1, 12 + (time*3%1)*25, -1.2, 1.2); ctx.stroke();
+                        ctx.fillStyle = `rgba(96, 165, 250, ${1-tp})`; // Blue tear droplets
+                        ctx.beginPath(); ctx.ellipse(18, -8 - tp*10, 1.5, 3, Math.PI/4, 0, Math.PI*2); ctx.fill();
+                        ctx.beginPath(); ctx.ellipse(18, 8 + tp*10, 1.5, 3, -Math.PI/4, 0, Math.PI*2); ctx.fill();
+                        
+                        ctx.strokeStyle = `rgba(147, 197, 253, ${1-(time*3%1)})`; ctx.lineWidth = 3;
+                        ctx.beginPath(); ctx.arc(18, 0, 10 + (time*3%1)*15, -0.8, 0.8); ctx.stroke(); // Sound wave
+                        ctx.restore();
+                        
+                        // Shhhh bubble
+                        ctx.save();
+                        ctx.translate(t.x, t.y - 35);
+                        ctx.fillStyle = '#ffffff';
+                        ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 8;
+                        ctx.beginPath(); ctx.roundRect(-25, -12, 50, 20, 8); ctx.fill();
+                        ctx.beginPath(); ctx.moveTo(-5, 8); ctx.lineTo(-10, 15); ctx.lineTo(5, 8); ctx.fill();
+                        ctx.fillStyle = '#000000'; ctx.shadowBlur = 0;
+                        ctx.font = '900 13px Inter'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                        ctx.fillText('Shhhh...', 0, -2);
+                        ctx.restore();
+                    }
+                    
+                    // Render the volunteer coming/leaving with the baby
+                    if (t.volunteer && (t.state === 'volunteer_arriving' || t.state === 'volunteer_leaving')) {
+                        let v = t.volunteer;
+                        ctx.restore(); // Undo task translation
+                        ctx.save();
+                        ctx.translate(v.x, v.y);
+                        
+                        // Volunteer Legs
+                        let vLegSwing = Math.sin(v.walkPhase) * 12;
+                        ctx.fillStyle = '#d6d3d1'; // Khaki pants
+                        ctx.beginPath(); ctx.roundRect(-6, -4 + vLegSwing, 6, 12, 3); ctx.fill(); // Left leg
+                        ctx.beginPath(); ctx.roundRect(0, -4 - vLegSwing, 6, 12, 3); ctx.fill(); // Right leg
+                        
+                        ctx.rotate(v.angle);
+                        
+                        // Body - Light Blue Shirt
+                        ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 10;
+                        ctx.fillStyle = '#7dd3fc'; // Light blue
+                        ctx.beginPath(); ctx.ellipse(-2, 0, 12, 17, 0, 0, Math.PI*2); ctx.fill();
+                        ctx.shadowBlur = 0;
+                        
+                        // Arms
+                        ctx.fillStyle = '#7dd3fc';
+                        let vArmSwing = t.state === 'volunteer_leaving' ? 0 : Math.sin(v.walkPhase) * 10;
+                        ctx.beginPath(); ctx.roundRect(-6 - vArmSwing, -18, 16, 7, 3); ctx.fill();
+                        ctx.beginPath(); ctx.roundRect(-6 + vArmSwing, 11, 16, 7, 3); ctx.fill();
+                        
+                        // If leaving, hold baby on torso
+                        if (t.state === 'volunteer_leaving') {
+                            ctx.fillStyle = '#fbcfe8'; // Baby blanket
+                            ctx.beginPath(); ctx.roundRect(-2, -6, 14, 12, 5); ctx.fill();
+                            ctx.fillStyle = '#fef08a'; // Baby head
+                            ctx.beginPath(); ctx.arc(10, 0, 5, 0, Math.PI*2); ctx.fill();
+                            
+                            // Arms wrap around baby
+                            ctx.fillStyle = '#fcd5ce'; // Volunteer Hands holding baby
+                            ctx.beginPath(); ctx.arc(12, -8, 4, 0, Math.PI*2); ctx.fill();
+                            ctx.beginPath(); ctx.arc(12, 8, 4, 0, Math.PI*2); ctx.fill();
+                        } else {
+                            // Empty hands swinging
+                            ctx.fillStyle = '#fcd5ce';
+                            ctx.beginPath(); ctx.arc(10 - vArmSwing, -15, 4, 0, Math.PI*2); ctx.fill();
+                            ctx.beginPath(); ctx.arc(10 + vArmSwing, 14, 4, 0, Math.PI*2); ctx.fill();
+                        }
+                        
+                        // Head
+                        ctx.fillStyle = '#fcd5ce';
+                        ctx.beginPath(); ctx.arc(4, 0, 9, 0, Math.PI*2); ctx.fill();
+                        ctx.fillStyle = '#b45309'; // Hair
+                        ctx.beginPath(); ctx.arc(3, 0, 9.5, Math.PI*0.35, Math.PI*1.65); ctx.fill();
                     }
                 } 
                 else if (t.type === 'medical') {
@@ -1196,18 +1323,13 @@
                         ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 12;
                         
                         // Fire Rescue Stokes Basket
-                        ctx.fillStyle = '#991b1b'; // Dark Red
+                        ctx.fillStyle = '#991b1b';
                         ctx.beginPath(); ctx.roundRect(-16, -30, 32, 60, 8); ctx.fill();
-                        
-                        // Silver Rails
                         ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 3;
                         ctx.beginPath(); ctx.roundRect(-14, -28, 28, 56, 6); ctx.stroke();
-                        
-                        // Internal Padding
                         ctx.fillStyle = '#1e293b'; 
                         ctx.beginPath(); ctx.roundRect(-10, -24, 20, 48, 4); ctx.fill();
-
-                        ctx.fillStyle = t.chair.shirt; // Patient
+                        ctx.fillStyle = t.chair.shirt;
                         ctx.beginPath(); ctx.roundRect(-9, -18, 18, 28, 6); ctx.fill();
                         ctx.fillStyle = t.chair.skin;
                         ctx.beginPath(); ctx.arc(0, -18, 8, 0, Math.PI*2); ctx.fill();
@@ -1217,7 +1339,6 @@
                     }
                 }
                 else if (t.type === 'coffee') {
-                    // Pulsing spill aura
                     let pulse = Math.abs(Math.sin(time * 3)) * 0.2 + 0.8;
                     let grad = ctx.createRadialGradient(0,0,0, 0,0, t.radius * 1.5);
                     grad.addColorStop(0, `rgba(139, 69, 19, ${0.4 * pulse})`); 
@@ -1225,7 +1346,6 @@
                     ctx.fillStyle = grad;
                     ctx.beginPath(); ctx.arc(0, 0, t.radius * 1.5, 0, Math.PI*2); ctx.fill();
 
-                    // Brown Coffee Puddle
                     ctx.fillStyle = '#451a03'; 
                     ctx.beginPath();
                     if (ctx.ellipse) ctx.ellipse(0, 5, 18, 12, 0.2, 0, Math.PI*2);
@@ -1234,14 +1354,12 @@
                     ctx.beginPath(); ctx.arc(-10, -2, 6, 0, Math.PI*2); ctx.fill();
                     ctx.beginPath(); ctx.arc(12, -4, 8, 0, Math.PI*2); ctx.fill();
 
-                    // Spilled White/Red Coffee Cup
                     ctx.fillStyle = '#f8fafc'; 
                     ctx.beginPath(); ctx.roundRect(-8, -12, 16, 12, 2); ctx.fill();
                     ctx.fillStyle = '#dc2626'; 
                     ctx.fillRect(-8, -8, 16, 4);
                 }
                 else if (t.type === 'rusher') {
-                    // Motion Blur Trail
                     t.trail.forEach((pos, i) => {
                         ctx.globalAlpha = 0.5 - (i * 0.08);
                         ctx.fillStyle = '#71717a'; 
@@ -1249,8 +1367,17 @@
                     });
                     ctx.globalAlpha = 1.0;
 
+                    // Realistic Rusher Legs
+                    let rLegSwing = Math.sin(t.walkPhase || 0) * 14;
+                    ctx.fillStyle = '#27272a'; // Dark Jeans
+                    ctx.beginPath(); ctx.roundRect(-10, -4 + rLegSwing, 8, 16, 3); ctx.fill();
+                    ctx.beginPath(); ctx.roundRect(2, -4 - rLegSwing, 8, 16, 3); ctx.fill();
+                    ctx.fillStyle = '#000000'; // Boots
+                    ctx.beginPath(); ctx.roundRect(-11, 10 + rLegSwing, 10, 6, 2); ctx.fill();
+                    ctx.beginPath(); ctx.roundRect(1, 10 - rLegSwing, 10, 6, 2); ctx.fill();
+
                     ctx.rotate(-Math.PI/2); 
-                    let swing = Math.sin(time * 22) * 18; 
+                    let swing = Math.sin(t.walkPhase || 0) * 12;
                     
                     // Tactical Backpack
                     let packGrad = ctx.createLinearGradient(-30, -15, -10, 15);
@@ -1258,28 +1385,25 @@
                     ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 15;
                     ctx.fillStyle = packGrad;
                     ctx.beginPath(); ctx.roundRect(-30, -14, 18, 28, 6); ctx.fill(); 
-                    ctx.fillStyle = '#09090b'; // Pack pouch
+                    ctx.fillStyle = '#09090b'; 
                     ctx.beginPath(); ctx.roundRect(-32, -10, 6, 20, 2); ctx.fill(); 
                     ctx.shadowBlur = 0;
 
-                    // Tactical Hoodie / Jacket
+                    // Tactical Hoodie / Body
                     let jacketGrad = ctx.createRadialGradient(-5, 0, 0, -5, 0, 22);
                     jacketGrad.addColorStop(0, '#3f3f46'); jacketGrad.addColorStop(1, '#18181b');
                     ctx.fillStyle = jacketGrad;
-                    ctx.beginPath(); 
-                    if (ctx.ellipse) ctx.ellipse(-4, 0, 20, 18, 0, 0, Math.PI*2);
-                    else ctx.roundRect(-24, -18, 40, 36, 12);
-                    ctx.fill();
+                    ctx.beginPath(); ctx.ellipse(-4, 0, 20, 18, 0, 0, Math.PI*2); ctx.fill();
                     
                     // Hoodie Wrinkles
                     ctx.strokeStyle = '#27272a'; ctx.lineWidth = 2;
                     ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(-15, -14); ctx.stroke();
                     ctx.beginPath(); ctx.moveTo(0, 10); ctx.lineTo(-15, 14); ctx.stroke();
                     
-                    // Arms (Aggressive stance)
+                    // Arms 
                     ctx.fillStyle = '#27272a'; 
-                    ctx.beginPath(); ctx.roundRect(-5 - swing, -20, 24, 9, 4.5); ctx.fill(); // Left arm
-                    ctx.beginPath(); ctx.roundRect(-5 + swing, 11, 26, 9, 4.5); ctx.fill();  // Right arm holding knife
+                    ctx.beginPath(); ctx.roundRect(-5 - swing, -20, 24, 9, 4.5); ctx.fill(); 
+                    ctx.beginPath(); ctx.roundRect(-5 + swing, 11, 26, 9, 4.5); ctx.fill();  
                     
                     // Gloved Hands
                     ctx.fillStyle = '#18181b'; 
@@ -1299,28 +1423,24 @@
                     ctx.fillStyle = bladeGrad;
                     ctx.beginPath(); ctx.moveTo(28 + swing, 13); ctx.lineTo(44 + swing, 13); ctx.lineTo(40 + swing, 17); ctx.lineTo(28 + swing, 17); ctx.fill();
                     
-                    // Serration detail
                     ctx.fillStyle = '#18181b';
                     for(let i=0; i<3; i++) { ctx.fillRect(30 + swing + i*3, 16, 1, 1); }
                     ctx.shadowBlur = 0;
 
-                    // Head (Hooded)
+                    // Head
                     ctx.fillStyle = '#18181b'; // Hood over head
                     ctx.beginPath(); ctx.arc(2, 0, 13, 0, Math.PI*2); ctx.fill();
-                    
-                    ctx.fillStyle = t.skin; // Face peering out
-                    ctx.beginPath(); ctx.arc(6, 0, 9, -Math.PI*0.4, Math.PI*0.4); ctx.fill();
+                    ctx.fillStyle = t.skin; // Face peering out more clearly
+                    ctx.beginPath(); ctx.arc(6, 0, 10, -Math.PI*0.4, Math.PI*0.4); ctx.fill();
                     
                     // Wrap-around tactical sunglasses
                     ctx.fillStyle = '#000000';
                     ctx.beginPath(); ctx.roundRect(11, -7, 5, 14, 2); ctx.fill();
-                    // Orange reflection on glasses
                     ctx.fillStyle = '#ea580c';
                     ctx.beginPath(); ctx.roundRect(13, -5, 2, 4, 1); ctx.fill();
                     ctx.beginPath(); ctx.roundRect(13, 1, 2, 4, 1); ctx.fill();
                 }
                 else if (t.type === 'old_rusher') {
-                    // Motion Blur Trail
                     t.trail.forEach((pos, i) => {
                         ctx.globalAlpha = 0.5 - (i * 0.08);
                         ctx.fillStyle = '#a1a1aa'; 
@@ -1328,10 +1448,19 @@
                     });
                     ctx.globalAlpha = 1.0;
 
+                    // Elder Legs (Shuffling)
+                    let eLegSwing = Math.sin(t.walkPhase || 0) * 8;
+                    ctx.fillStyle = '#451a03'; // Brown pants
+                    ctx.beginPath(); ctx.roundRect(-8, -4 + eLegSwing, 6, 12, 3); ctx.fill();
+                    ctx.beginPath(); ctx.roundRect(2, -4 - eLegSwing, 6, 12, 3); ctx.fill();
+                    ctx.fillStyle = '#171717'; // Orthopedic shoes
+                    ctx.beginPath(); ctx.roundRect(-9, 8 + eLegSwing, 8, 5, 2); ctx.fill();
+                    ctx.beginPath(); ctx.roundRect(1, 8 - eLegSwing, 8, 5, 2); ctx.fill();
+
                     ctx.rotate(-Math.PI/2); 
-                    let swing = Math.sin(time * 8) * 4; // Very slow old person shuffle
+                    let swing = Math.sin(t.walkPhase || 0) * 6;
                     
-                    // Shiny Aluminum Walker with 3D Depth
+                    // Shiny Aluminum Walker
                     ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 8;
                     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
                     let walkerGrad = ctx.createLinearGradient(10, -20, 35, 20);
@@ -1339,24 +1468,20 @@
                     ctx.strokeStyle = walkerGrad; 
                     ctx.lineWidth = 4.5;
                     ctx.beginPath();
-                    ctx.moveTo(8 + swing, -18);  // Left handle
-                    ctx.lineTo(28 + swing, -19); // Left front leg
-                    ctx.lineTo(34 + swing, -12); // Front curve
-                    ctx.lineTo(34 + swing, 12);  // Front curve
-                    ctx.lineTo(28 + swing, 19);  // Right front leg
-                    ctx.lineTo(8 + swing, 18);   // Right handle
+                    ctx.moveTo(8 + swing, -18);  
+                    ctx.lineTo(28 + swing, -19); 
+                    ctx.lineTo(34 + swing, -12); 
+                    ctx.lineTo(34 + swing, 12);  
+                    ctx.lineTo(28 + swing, 19);  
+                    ctx.lineTo(8 + swing, 18);   
                     ctx.stroke();
                     
-                    // Walker Crossbar
                     ctx.lineWidth = 3;
                     ctx.beginPath(); ctx.moveTo(25 + swing, -16); ctx.lineTo(25 + swing, 16); ctx.stroke();
-
-                    // Black rubber grips
                     ctx.strokeStyle = '#18181b'; ctx.lineWidth = 5.5;
                     ctx.beginPath(); ctx.moveTo(8 + swing, -18); ctx.lineTo(16 + swing, -18.5); ctx.stroke();
                     ctx.beginPath(); ctx.moveTo(8 + swing, 18); ctx.lineTo(16 + swing, 18.5); ctx.stroke();
 
-                    // Neon yellow tennis balls on front legs
                     let tbGrad = ctx.createRadialGradient(28+swing, -19, 1, 28+swing, -19, 5);
                     tbGrad.addColorStop(0, '#bef264'); tbGrad.addColorStop(1, '#65a30d');
                     ctx.fillStyle = tbGrad; ctx.beginPath(); ctx.arc(28 + swing, -19, 5, 0, Math.PI*2); ctx.fill();
@@ -1371,37 +1496,31 @@
                     let sweaterGrad = ctx.createRadialGradient(-2, 0, 0, -2, 0, 18);
                     sweaterGrad.addColorStop(0, '#fcd34d'); sweaterGrad.addColorStop(1, '#b45309'); 
                     ctx.fillStyle = sweaterGrad; 
-                    ctx.beginPath(); 
-                    if (ctx.ellipse) ctx.ellipse(-4, 0, 18, 15, 0, 0, Math.PI*2);
-                    else ctx.roundRect(-22, -15, 36, 30, 8);
-                    ctx.fill();
+                    ctx.beginPath(); ctx.ellipse(-4, 0, 18, 15, 0, 0, Math.PI*2); ctx.fill();
                     ctx.shadowBlur = 0;
                     
-                    // Plaid shirt collar peeking out
                     ctx.fillStyle = '#ffffff';
                     ctx.beginPath(); ctx.moveTo(2, -4); ctx.lineTo(8, 0); ctx.lineTo(2, 4); ctx.fill();
 
-                    // Arms (Thin, frail)
+                    // Arms 
                     ctx.fillStyle = '#d97706';
-                    ctx.beginPath(); ctx.roundRect(-6 + swing, -18, 20, 7, 3.5); ctx.fill(); // Left arm
-                    ctx.beginPath(); ctx.roundRect(-6 - swing, 11, 22, 7, 3.5); ctx.fill();  // Right arm
+                    ctx.beginPath(); ctx.roundRect(-6 + swing, -18, 20, 7, 3.5); ctx.fill(); 
+                    ctx.beginPath(); ctx.roundRect(-6 - swing, 11, 22, 7, 3.5); ctx.fill();  
 
                     // Wrinkled Hands
                     ctx.fillStyle = t.skin;
                     ctx.beginPath(); ctx.arc(13 + swing, -15, 4, 0, Math.PI*2); ctx.fill();
                     ctx.beginPath(); ctx.arc(15 - swing, 14.5, 4, 0, Math.PI*2); ctx.fill();
                     
-                    // Large Heavy Revolver in Right Hand
+                    // Large Heavy Revolver
                     ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 6;
                     let gunGrad = ctx.createLinearGradient(16-swing, 12, 32-swing, 12);
                     gunGrad.addColorStop(0, '#64748b'); gunGrad.addColorStop(0.5, '#cbd5e1'); gunGrad.addColorStop(1, '#475569');
                     ctx.fillStyle = gunGrad;
-                    ctx.beginPath(); ctx.roundRect(14 - swing, 12.5, 18, 5, 1); ctx.fill(); // Barrel
-                    
-                    ctx.fillStyle = '#334155'; // Cylinder
+                    ctx.beginPath(); ctx.roundRect(14 - swing, 12.5, 18, 5, 1); ctx.fill(); 
+                    ctx.fillStyle = '#334155'; 
                     ctx.beginPath(); ctx.roundRect(18 - swing, 11, 6, 8, 2); ctx.fill();
-                    
-                    ctx.fillStyle = '#78350f'; // Wooden Grip
+                    ctx.fillStyle = '#78350f'; 
                     ctx.beginPath(); ctx.roundRect(12 - swing, 15, 5, 9, 2); ctx.fill();
                     ctx.shadowBlur = 0;
 
@@ -1409,31 +1528,36 @@
                     ctx.fillStyle = t.skin; 
                     ctx.beginPath(); ctx.arc(6, 0, 10, 0, Math.PI*2); ctx.fill();
                     
-                    // Liver spots
                     ctx.fillStyle = 'rgba(120, 50, 0, 0.2)';
                     ctx.beginPath(); ctx.arc(4, -3, 1.5, 0, Math.PI*2); ctx.fill();
                     ctx.beginPath(); ctx.arc(6, 4, 1, 0, Math.PI*2); ctx.fill();
                     ctx.beginPath(); ctx.arc(2, 2, 2, 0, Math.PI*2); ctx.fill();
                     
-                    // Fluffy white ring of hair (male pattern baldness)
                     ctx.fillStyle = '#f8fafc'; 
                     ctx.beginPath(); ctx.arc(5, 0, 11, Math.PI*0.6, Math.PI*1.4); ctx.fill();
                     
-                    // Thick reading glasses
                     ctx.strokeStyle = '#000000'; ctx.lineWidth = 1.5;
                     ctx.beginPath(); ctx.roundRect(12, -6, 3, 5, 1); ctx.stroke();
                     ctx.beginPath(); ctx.roundRect(12, 1, 3, 5, 1); ctx.stroke();
                     ctx.beginPath(); ctx.moveTo(12, -1); ctx.lineTo(12, 1); ctx.stroke();
                     
-                    // Glass reflection
                     ctx.fillStyle = 'rgba(255,255,255,0.6)';
                     ctx.fillRect(13, -5, 1, 3); ctx.fillRect(13, 2, 1, 3);
                 }
                 else if (t.type === 'visitor') {
                     ctx.save();
-                    ctx.rotate(t.angle || -Math.PI/2);
                     
-                    let swing = (t.state === 'walking_in' || t.state === 'following' || t.state === 'seating') ? Math.sin(time * 15) * 5 : 0;
+                    // Visitor Legs
+                    let vLegSwing = (t.state === 'walking_in' || t.state === 'following' || t.state === 'seating') ? Math.sin(t.walkPhase || 0) * 12 : 0;
+                    ctx.fillStyle = '#1e293b'; // Dark pants
+                    ctx.beginPath(); ctx.roundRect(-8, -4 + vLegSwing, 6, 12, 3); ctx.fill();
+                    ctx.beginPath(); ctx.roundRect(2, -4 - vLegSwing, 6, 12, 3); ctx.fill();
+                    ctx.fillStyle = '#000000';
+                    ctx.beginPath(); ctx.roundRect(-9, 8 + vLegSwing, 8, 5, 2); ctx.fill();
+                    ctx.beginPath(); ctx.roundRect(1, 8 - vLegSwing, 8, 5, 2); ctx.fill();
+
+                    ctx.rotate(t.angle || -Math.PI/2);
+                    let swing = (t.state === 'walking_in' || t.state === 'following' || t.state === 'seating') ? Math.sin(t.walkPhase || 0) * 8 : 0;
                     
                     // Swinging Arms
                     ctx.fillStyle = t.shirt;
@@ -1443,10 +1567,7 @@
                     // Body
                     ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 10;
                     ctx.fillStyle = t.shirt;
-                    ctx.beginPath(); 
-                    if (ctx.ellipse) ctx.ellipse(-2, 0, 13, 19, 0, 0, Math.PI*2);
-                    else ctx.roundRect(-15, -19, 30, 38, 8);
-                    ctx.fill();
+                    ctx.beginPath(); ctx.ellipse(-2, 0, 13, 19, 0, 0, Math.PI*2); ctx.fill();
                     ctx.shadowBlur = 0;
                     
                     // Head & Hair
@@ -1455,7 +1576,7 @@
                     ctx.fillStyle = t.hair;
                     ctx.beginPath(); ctx.arc(3, 0, 11, Math.PI*0.35, Math.PI*1.65); ctx.fill();
                     
-                    ctx.restore(); // Restore rotation so sign stays upright
+                    ctx.restore(); 
 
                     // Floating 'SEAT VISITOR' Sign
                     if (t.state !== 'seating') {
@@ -1464,7 +1585,7 @@
                         ctx.translate(0, -38 + bob);
                         
                         ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 8;
-                        ctx.fillStyle = '#22c55e'; // Bright Green
+                        ctx.fillStyle = '#22c55e'; 
                         ctx.beginPath(); ctx.roundRect(-45, -12, 90, 20, 6); ctx.fill();
                         ctx.beginPath(); ctx.moveTo(-6, 8); ctx.lineTo(0, 16); ctx.lineTo(6, 8); ctx.fill();
                         
@@ -1483,47 +1604,49 @@
                     t.doctors.forEach(doc => {
                         ctx.save();
                         ctx.translate(doc.x, doc.y);
+                        
+                        // Fireman Legs
+                        let docLegSwing = Math.sin(doc.walkPhase || 0) * 12;
+                        ctx.fillStyle = '#171717'; // Black pants
+                        ctx.beginPath(); ctx.roundRect(-8, -4 + docLegSwing, 6, 12, 3); ctx.fill();
+                        ctx.beginPath(); ctx.roundRect(2, -4 - docLegSwing, 6, 12, 3); ctx.fill();
+                        
                         ctx.rotate(doc.angle);
                         
                         ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 10;
                         
                         // Fireman Turnout Coat
-                        ctx.fillStyle = '#b45309'; // Tan/Brown Turnout
-                        ctx.beginPath(); 
-                        if (ctx.ellipse) ctx.ellipse(-2, 0, 13, 17, 0, 0, Math.PI*2);
-                        else ctx.roundRect(-15, -17, 26, 34, 6);
-                        ctx.fill();
+                        ctx.fillStyle = '#b45309'; 
+                        ctx.beginPath(); ctx.ellipse(-2, 0, 13, 17, 0, 0, Math.PI*2); ctx.fill();
                         
-                        // High-Vis Yellow Reflective Stripes
                         ctx.fillStyle = '#fef08a'; 
                         ctx.fillRect(-10, -12, 16, 4);
                         ctx.fillRect(-10, 8, 16, 4);
                         ctx.shadowBlur = 0;
                         
-                        let mSwing = (t.state !== 'active') ? Math.sin(time * 18 + doc.offsetX) * 12 : 0;
+                        let mSwing = Math.sin(doc.walkPhase || 0) * 10;
                         
                         // Sleeves
                         ctx.fillStyle = '#b45309';
                         ctx.beginPath(); ctx.roundRect(-2 - mSwing, -19, 16, 8, 3); ctx.fill();
                         ctx.beginPath(); ctx.roundRect(-2 + mSwing, 11, 16, 8, 3); ctx.fill();
                         
-                        // Sleeve Reflective Stripes
                         ctx.fillStyle = '#fef08a';
                         ctx.fillRect(8 - mSwing, -19, 4, 8);
                         ctx.fillRect(8 + mSwing, 11, 4, 8);
                         
                         // Fire Helmet
                         ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 5;
-                        ctx.fillStyle = '#171717'; // Black Brim
+                        ctx.fillStyle = '#171717'; 
                         ctx.beginPath(); 
                         if(ctx.ellipse) ctx.ellipse(2, 0, 12, 10, 0, 0, Math.PI*2); 
                         else ctx.arc(2, 0, 12, 10, 0, Math.PI*2);
                         ctx.fill();
                         
-                        ctx.fillStyle = '#0a0a0a'; // Helmet Dome
+                        ctx.fillStyle = '#0a0a0a'; 
                         ctx.beginPath(); ctx.arc(4, 0, 7, 0, Math.PI*2); ctx.fill();
                         
-                        ctx.fillStyle = '#fbbf24'; // Front Shield
+                        ctx.fillStyle = '#fbbf24'; 
                         ctx.fillRect(9, -3, 3, 6);
                         
                         ctx.shadowBlur = 0;
@@ -1532,33 +1655,39 @@
                 }
             });
 
-            // Draw Chad
+            // Draw Chad (The Main Character)
             ctx.save();
             
-            // Premium Player Glow Aura
+            // Player Glow Aura
             let playerGlow = ctx.createRadialGradient(chad.x, chad.y, 10, chad.x, chad.y, 45);
-            playerGlow.addColorStop(0, 'rgba(56, 189, 248, 0.2)'); // Soft blue underglow
+            playerGlow.addColorStop(0, 'rgba(56, 189, 248, 0.2)'); 
             playerGlow.addColorStop(1, 'rgba(56, 189, 248, 0)');
             ctx.fillStyle = playerGlow;
             ctx.beginPath(); ctx.arc(chad.x, chad.y, 45, 0, Math.PI*2); ctx.fill();
 
-            let cBob = Math.abs(Math.sin(chad.walkPhase)) * 3.5; // Walk bouncing
+            // Realistic Legs
+            let cLegSwing = Math.sin(chad.walkPhase) * 14;
+            ctx.fillStyle = '#1e40af'; // Blue Jeans
+            ctx.beginPath(); ctx.roundRect(chad.x - 12, chad.y - 4 + cLegSwing, 8, 16, 3); ctx.fill();
+            ctx.beginPath(); ctx.roundRect(chad.x + 4, chad.y - 4 - cLegSwing, 8, 16, 3); ctx.fill();
+            ctx.fillStyle = '#78350f'; // Brown Leather Shoes
+            ctx.beginPath(); ctx.roundRect(chad.x - 13, chad.y + 12 + cLegSwing, 10, 6, 2); ctx.fill();
+            ctx.beginPath(); ctx.roundRect(chad.x + 3, chad.y + 12 - cLegSwing, 10, 6, 2); ctx.fill();
+
+            let cBob = Math.abs(Math.sin(chad.walkPhase)) * 3.5;
             ctx.translate(chad.x, chad.y - cBob);
             ctx.rotate(chad.angle); 
             
-            let cSwing = Math.sin(chad.walkPhase) * 16;
+            let cSwing = Math.sin(chad.walkPhase) * 12;
             
-            ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 8 + cBob; // Dynamic shadow
+            ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 8 + cBob;
             let shirtGrad = ctx.createRadialGradient(-2, 0, 0, -2, 0, 18);
             shirtGrad.addColorStop(0, '#ffffff'); 
             shirtGrad.addColorStop(0.6, '#f1f5f9');
             shirtGrad.addColorStop(1, '#94a3b8'); 
             
             ctx.fillStyle = shirtGrad; 
-            ctx.beginPath(); 
-            if (ctx.ellipse) ctx.ellipse(-4, 0, 15, 19, 0, 0, Math.PI*2);
-            else ctx.roundRect(-19, -19, 30, 38, 10);
-            ctx.fill();
+            ctx.beginPath(); ctx.ellipse(-4, 0, 15, 19, 0, 0, Math.PI*2); ctx.fill();
             ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
             
             // Lanyard String
@@ -1584,19 +1713,18 @@
             ctx.fillStyle = chadHandGrad2;
             ctx.beginPath(); ctx.arc(16 + cSwing, 16, 5.5, 0, Math.PI*2); ctx.fill();
 
-            // Flashlight (Chad visually pulls it out during a blackout)
+            // Flashlight
             if (isBlackout) {
                 ctx.save();
                 ctx.translate(16 + cSwing, 16);
-                ctx.rotate(0.2); // Point slightly outward
+                ctx.rotate(0.2);
                 
                 ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 5;
-                ctx.fillStyle = '#111827'; // Dark grey casing
+                ctx.fillStyle = '#111827'; 
                 ctx.beginPath(); ctx.roundRect(-2, -4, 18, 8, 2); ctx.fill();
-                ctx.fillStyle = '#fbbf24'; // Yellow rim
+                ctx.fillStyle = '#fbbf24';
                 ctx.beginPath(); ctx.roundRect(14, -5, 4, 10, 2); ctx.fill();
                 
-                // Bright glowing bulb
                 ctx.shadowColor = '#fef08a'; ctx.shadowBlur = 12;
                 ctx.fillStyle = '#ffffff';
                 ctx.beginPath(); ctx.arc(18, 0, 3, 0, Math.PI*2); ctx.fill();
@@ -1627,7 +1755,7 @@
 
             // Nose
             ctx.fillStyle = '#d99587';
-            if (ctx.ellipse) { ctx.beginPath(); ctx.ellipse(12, 0, 3, 4, 0, 0, Math.PI*2); ctx.fill(); } 
+            ctx.beginPath(); ctx.ellipse(12, 0, 3, 4, 0, 0, Math.PI*2); ctx.fill();
 
             // Hair
             ctx.fillStyle = '#4a3018'; 
@@ -1651,10 +1779,8 @@
                 ctx.fillStyle = 'rgba(2, 6, 23, 0.5)'; // 50% dark room
                 ctx.fillRect(0, 0, cw, ch);
 
-                // 1. Punch holes in the darkness (reveals normal floor below)
                 ctx.globalCompositeOperation = 'destination-out';
                 
-                // Directional Cone mask
                 let beamMask = ctx.createRadialGradient(chad.x, chad.y, 20, chad.x, chad.y, 800);
                 beamMask.addColorStop(0, 'rgba(255,255,255,1)');
                 beamMask.addColorStop(0.6, 'rgba(255,255,255,0.9)');
@@ -1666,18 +1792,16 @@
                 ctx.arc(chad.x, chad.y, 800, chad.angle - 0.85, chad.angle + 0.85);
                 ctx.fill();
 
-                // Ambient glow mask around Chad
                 let ambientMask = ctx.createRadialGradient(chad.x, chad.y, 10, chad.x, chad.y, 70);
                 ambientMask.addColorStop(0, 'rgba(255,255,255,0.7)');
                 ambientMask.addColorStop(1, 'rgba(255,255,255,0)');
                 ctx.fillStyle = ambientMask;
                 ctx.beginPath(); ctx.arc(chad.x, chad.y, 70, 0, Math.PI*2); ctx.fill();
 
-                // 2. Add soft yellow light tint over the revealed areas
                 ctx.globalCompositeOperation = 'source-over'; 
                 
                 let yellowBeam = ctx.createRadialGradient(chad.x, chad.y, 20, chad.x, chad.y, 800);
-                yellowBeam.addColorStop(0, 'rgba(253, 224, 71, 0.35)'); // Glowing Light Yellow
+                yellowBeam.addColorStop(0, 'rgba(253, 224, 71, 0.35)'); 
                 yellowBeam.addColorStop(1, 'rgba(253, 224, 71, 0)');
                 
                 ctx.fillStyle = yellowBeam;
@@ -1692,7 +1816,7 @@
                 ctx.fillStyle = yellowAmbient;
                 ctx.beginPath(); ctx.arc(chad.x, chad.y, 70, 0, Math.PI*2); ctx.fill();
 
-                ctx.restore(); // Restore normal drawing mode
+                ctx.restore(); 
 
                 // Flashing Red Exclamation in Sound Booth
                 let pulse = Math.abs(Math.sin(time * 5));
@@ -1711,7 +1835,7 @@
                 ctx.shadowColor = '#a3e635'; ctx.shadowBlur = 15;
                 ctx.fillStyle = '#a3e635'; // Glowing lime green
                 ctx.beginPath();
-                ctx.moveTo(0, 30);   // Point of the arrow
+                ctx.moveTo(0, 30);   
                 ctx.lineTo(-20, 5);
                 ctx.lineTo(-8, 5);
                 ctx.lineTo(-8, -20);
@@ -1724,23 +1848,20 @@
                 ctx.restore();
 
             } else {
-                // Normal Vignette for cinematic feel
                 let vigGrad = ctx.createRadialGradient(cw/2, ch/2, Math.max(cw,ch)*0.4, cw/2, ch/2, Math.max(cw,ch)*0.9);
                 vigGrad.addColorStop(0, 'rgba(0,0,0,0)');
                 vigGrad.addColorStop(1, 'rgba(0,0,0,0.6)'); 
                 ctx.fillStyle = vigGrad;
                 ctx.fillRect(0, 0, cw, ch);
                 
-                // Communion Dimming Effect
                 if (isCommunionTime) {
-                    ctx.fillStyle = 'rgba(15, 23, 42, 0.4)'; // Moody purple/dark-blue dim
+                    ctx.fillStyle = 'rgba(15, 23, 42, 0.4)'; 
                     ctx.fillRect(0, 0, cw, ch);
                 }
             }
 
-            // Floating Score Texts (Rendered on top of everything)
             floatingTexts.forEach(ft => {
-                ctx.globalAlpha = Math.min(1, ft.life / 0.5); // Fade out near end
+                ctx.globalAlpha = Math.min(1, ft.life / 0.5); 
                 ctx.fillStyle = ft.col;
                 ctx.font = '900 36px Inter';
                 ctx.textAlign = 'center';
