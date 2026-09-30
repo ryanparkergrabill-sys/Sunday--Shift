@@ -96,13 +96,67 @@
     </div>
 
     <!-- Start / Game Over Screens -->
-    <div id="screen-overlay" class="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-md flex-col text-center p-6 pointer-events-auto">
-        <div class="glass-panel p-8 md:p-12 rounded-3xl max-w-lg w-full border-t border-white/20">
-            <h1 id="title-main" class="text-5xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300 mb-2 drop-shadow-[0_5px_5px_rgba(0,0,0,0.8)]">Sound House</h1>
-            <h2 id="title-sub" class="text-2xl md:text-3xl font-bold text-slate-300 mb-6 tracking-widest uppercase">Sunday Shift</h2>
+    <div id="screen-overlay" class="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-md flex-col text-center p-6 pointer-events-auto overflow-y-auto">
+        <div class="glass-panel p-8 md:p-12 rounded-3xl max-w-lg w-full border-t border-white/20 my-auto">
             
-            <div id="tutorial-text" class="text-slate-300 mb-8 text-left text-sm md:text-base space-y-3 bg-black/30 p-5 rounded-xl border border-white/5">
-                <p><strong>Chad</strong>, keep the service running smoothly!</p>
+            <!-- Digital Greg Avatar -->
+            <div class="flex justify-center mb-6 relative">
+                <div class="absolute inset-0 bg-pink-500/20 blur-xl rounded-full"></div>
+                <svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" class="relative z-10 drop-shadow-2xl transition-all duration-500">
+                    <!-- Background circle -->
+                    <circle cx="60" cy="60" r="55" fill="#fdf2f8" stroke="#fbcfe8" stroke-width="4"/>
+                    
+                    <!-- Plumper Pink Suit Shoulders -->
+                    <path d="M 12 120 C 12 70, 108 70, 108 120" fill="#f9a8d4" stroke="#f472b6" stroke-width="2"/>
+                    
+                    <!-- Wider Light Blue Striped Shirt -->
+                    <path d="M 35 120 C 35 85, 85 85, 85 120" fill="#bae6fd"/>
+                    <path d="M 40 100 L 40 120 M 45 96 L 45 120 M 50 94 L 50 120 M 55 93 L 55 120 M 60 92 L 60 120 M 65 93 L 65 120 M 70 94 L 70 120 M 75 96 L 75 120 M 80 100 L 80 120" stroke="#0369a1" stroke-width="1.5" opacity="0.6"/>
+                    
+                    <!-- Bowtie -->
+                    <path d="M 60 95 L 45 85 L 45 105 Z" fill="#1e1b4b"/>
+                    <path d="M 60 95 L 75 85 L 75 105 Z" fill="#1e1b4b"/>
+                    <circle cx="60" cy="95" r="5" fill="#1e1b4b"/>
+                    <!-- Red Polka Dots -->
+                    <circle cx="50" cy="95" r="2" fill="#ef4444"/> <circle cx="70" cy="95" r="2" fill="#ef4444"/>
+                    <circle cx="60" cy="95" r="2" fill="#ef4444"/> <circle cx="48" cy="90" r="1.5" fill="#ef4444"/>
+                    <circle cx="72" cy="90" r="1.5" fill="#ef4444"/>
+
+                    <!-- Neck -->
+                    <rect x="48" y="75" width="24" height="15" fill="#fcd5ce"/>
+                    
+                    <!-- Plumper Head -->
+                    <rect x="30" y="30" width="60" height="54" rx="22" fill="#fcd5ce"/>
+                    
+                    <!-- Goatee/Beard (Wider) -->
+                    <path d="M 34 70 C 34 96, 86 96, 86 70 C 75 80, 45 80, 34 70" fill="#291c14"/>
+                    <rect x="50" y="76" width="20" height="8" fill="#291c14" rx="3"/>
+                    
+                    <!-- Mustache -->
+                    <path d="M 45 69 Q 60 64 75 69" fill="none" stroke="#291c14" stroke-width="6" stroke-linecap="round"/>
+
+                    <!-- Dynamic Mouth (Will change via JS) -->
+                    <path id="greg-mouth" d="M 52 72 Q 60 78 68 72" fill="none" stroke="#000000" stroke-width="1.5" stroke-linecap="round"/>
+
+                    <!-- Eyes & Dynamic Brows -->
+                    <circle cx="46" cy="52" r="2.5" fill="#171717"/>
+                    <circle cx="74" cy="52" r="2.5" fill="#171717"/>
+                    <path id="greg-brows" d="M 42 46 L 50 46 M 70 46 L 78 46" fill="none" stroke="#291c14" stroke-width="3" stroke-linecap="round"/>
+                    
+                    <!-- Nose -->
+                    <path d="M 60 52 L 66 64 L 54 64 Z" fill="#d99587"/>
+                    
+                    <!-- Hair -->
+                    <path d="M 29 40 C 29 10, 91 10, 91 40 C 85 22, 35 22, 29 40" fill="#291c14"/>
+                    <path d="M 28 45 C 28 15, 92 15, 92 45 C 85 22, 35 22, 28 45" fill="#291c14"/>
+                </svg>
+            </div>
+
+            <h1 id="title-main" class="text-5xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300 mb-2 drop-shadow-[0_5px_5px_rgba(0,0,0,0.8)]">Sound House</h1>
+            <h2 id="title-sub" class="text-2xl md:text-3xl font-bold text-pink-300 mb-6 tracking-widest uppercase italic">Will he make the cut?</h2>
+            
+            <div id="tutorial-text" class="text-slate-300 mb-8 text-left text-sm md:text-base space-y-3 bg-black/30 p-5 rounded-xl border border-pink-500/20 shadow-[0_0_15px_rgba(236,72,153,0.1)]">
+                <p><strong class="text-pink-300 text-lg">Greg</strong>, keep the service running smoothly!</p>
                 <ul class="list-none space-y-1">
                     <li class="flex items-center text-xs md:text-sm"><span class="w-3 h-3 rounded-full bg-red-500 mr-2 shadow-[0_0_8px_red]"></span> Medical (Call Medics) <span class="text-green-400 ml-auto">+100 pts</span></li>
                     <li class="flex items-center text-xs md:text-sm"><span class="w-3 h-3 rounded-full bg-blue-400 mr-2 shadow-[0_0_8px_blue]"></span> Crying Baby (Mother Exits) <span class="text-green-400 ml-auto">+50 pts</span></li>
@@ -366,6 +420,10 @@
         async function handleStart(e) {
             if (e) e.preventDefault(); // Prevents double-firing if both touchstart and click trigger
 
+            // Reset Greg SVG to Happy
+            document.getElementById('greg-brows').setAttribute('d', 'M 42 46 L 50 46 M 70 46 L 78 46');
+            document.getElementById('greg-mouth').setAttribute('d', 'M 52 72 Q 60 78 68 72');
+
             // CRITICAL MOBILE AUDIO FIX:
             // Mobile browsers (especially iOS Safari) require the AudioContext to be 
             // initialized directly inside the synchronous path of a user gesture.
@@ -399,6 +457,15 @@
             if (gameState === 'GAMEOVER') return; // Prevent double-triggering
             gameState = 'GAMEOVER';
             
+            // Set Greg SVG Expression based on win/loss
+            if (won) {
+                document.getElementById('greg-brows').setAttribute('d', 'M 42 46 L 50 46 M 70 46 L 78 46'); // Happy/Neutral
+                document.getElementById('greg-mouth').setAttribute('d', 'M 52 72 Q 60 78 68 72'); // Smile
+            } else {
+                document.getElementById('greg-brows').setAttribute('d', 'M 42 48 L 50 44 M 70 44 L 78 48'); // Sad furrow
+                document.getElementById('greg-mouth').setAttribute('d', 'M 54 75 Q 60 70 66 75'); // Frown
+            }
+
             // Stop background music and play ending jingle
             Tone.Transport.stop();
             if (audioInitialized) {
@@ -492,16 +559,28 @@
                     task.x -= 120;
                 }
             } else if (type === 'rusher' || type === 'old_rusher') {
-                task.x = canvas.width / 2 + (Math.random() * 60 - 30);
+                task.x = 50 + Math.random() * (canvas.width - 100); // Randomize spawn across the room width
                 task.y = canvas.height;
                 task.baseX = task.x;
                 task.time = 0;
                 // Old rusher moves much slower!
                 task.speed = type === 'rusher' ? Math.max(90, canvas.height * 0.12) : Math.max(30, canvas.height * 0.04);
                 task.skin = skins[Math.floor(Math.random()*skins.length)];
+                task.hair = hairs[Math.floor(Math.random()*hairs.length)];
                 
                 // Threat sound effect
-                if (audioInitialized) sfxSynth.triggerAttackRelease("C2", "8n");
+                if (audioInitialized) {
+                    let now = Tone.now();
+                    if (type === 'rusher') {
+                        // Quick 2-tone siren alert
+                        sfxSynth.triggerAttackRelease("E5", "16n", now);
+                        sfxSynth.triggerAttackRelease("C5", "16n", now + 0.15);
+                        sfxSynth.triggerAttackRelease("E5", "16n", now + 0.3);
+                        sfxSynth.triggerAttackRelease("C5", "16n", now + 0.45);
+                    } else {
+                        sfxSynth.triggerAttackRelease("C2", "8n", now);
+                    }
+                }
             } else {
                 // Normal spawn pop
                 if (audioInitialized) chordSynth.triggerAttackRelease(["C5", "E5"], "16n");
@@ -1360,85 +1439,69 @@
                     ctx.fillRect(-8, -8, 16, 4);
                 }
                 else if (t.type === 'rusher') {
+                    // Pulsating Red Aura for high visibility
+                    let pulse = Math.abs(Math.sin(time * 6));
+                    let auraGrad = ctx.createRadialGradient(0, 0, 10, 0, 0, 50 + pulse * 20);
+                    auraGrad.addColorStop(0, 'rgba(255, 0, 0, 0.7)'); 
+                    auraGrad.addColorStop(1, 'rgba(255, 0, 0, 0)');
+                    ctx.fillStyle = auraGrad;
+                    ctx.beginPath(); ctx.arc(0, 0, 70 + pulse * 20, 0, Math.PI*2); ctx.fill();
+
                     t.trail.forEach((pos, i) => {
                         ctx.globalAlpha = 0.5 - (i * 0.08);
-                        ctx.fillStyle = '#71717a'; 
+                        ctx.fillStyle = '#ef4444'; // Red trail
                         ctx.beginPath(); ctx.arc(pos.x - t.x, pos.y - t.y, 14, 0, Math.PI*2); ctx.fill();
                     });
                     ctx.globalAlpha = 1.0;
 
-                    // Realistic Rusher Legs
+                    // Black Clothing Legs
                     let rLegSwing = Math.sin(t.walkPhase || 0) * 14;
-                    ctx.fillStyle = '#27272a'; // Dark Jeans
+                    ctx.fillStyle = '#171717'; // Black pants
                     ctx.beginPath(); ctx.roundRect(-10, -4 + rLegSwing, 8, 16, 3); ctx.fill();
                     ctx.beginPath(); ctx.roundRect(2, -4 - rLegSwing, 8, 16, 3); ctx.fill();
-                    ctx.fillStyle = '#000000'; // Boots
+                    ctx.fillStyle = '#000000'; // Black Shoes
                     ctx.beginPath(); ctx.roundRect(-11, 10 + rLegSwing, 10, 6, 2); ctx.fill();
                     ctx.beginPath(); ctx.roundRect(1, 10 - rLegSwing, 10, 6, 2); ctx.fill();
 
                     ctx.rotate(-Math.PI/2); 
                     let swing = Math.sin(t.walkPhase || 0) * 12;
                     
-                    // Tactical Backpack
-                    let packGrad = ctx.createLinearGradient(-30, -15, -10, 15);
-                    packGrad.addColorStop(0, '#18181b'); packGrad.addColorStop(1, '#27272a');
-                    ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 15;
-                    ctx.fillStyle = packGrad;
-                    ctx.beginPath(); ctx.roundRect(-30, -14, 18, 28, 6); ctx.fill(); 
-                    ctx.fillStyle = '#09090b'; 
-                    ctx.beginPath(); ctx.roundRect(-32, -10, 6, 20, 2); ctx.fill(); 
+                    // Body - All Black Shirt
+                    ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 10;
+                    ctx.fillStyle = '#0a0a0a';
+                    ctx.beginPath(); ctx.ellipse(-4, 0, 17, 18, 0, 0, Math.PI*2); ctx.fill();
                     ctx.shadowBlur = 0;
-
-                    // Tactical Hoodie / Body
-                    let jacketGrad = ctx.createRadialGradient(-5, 0, 0, -5, 0, 22);
-                    jacketGrad.addColorStop(0, '#3f3f46'); jacketGrad.addColorStop(1, '#18181b');
-                    ctx.fillStyle = jacketGrad;
-                    ctx.beginPath(); ctx.ellipse(-4, 0, 20, 18, 0, 0, Math.PI*2); ctx.fill();
                     
-                    // Hoodie Wrinkles
-                    ctx.strokeStyle = '#27272a'; ctx.lineWidth = 2;
-                    ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(-15, -14); ctx.stroke();
-                    ctx.beginPath(); ctx.moveTo(0, 10); ctx.lineTo(-15, 14); ctx.stroke();
+                    // Arms - Black Sleeves
+                    ctx.fillStyle = '#0a0a0a'; 
+                    ctx.beginPath(); ctx.roundRect(-5 - swing, -19, 22, 8, 4); ctx.fill(); 
+                    ctx.beginPath(); ctx.roundRect(-5 + swing, 11, 22, 8, 4); ctx.fill();  
                     
-                    // Arms 
-                    ctx.fillStyle = '#27272a'; 
-                    ctx.beginPath(); ctx.roundRect(-5 - swing, -20, 24, 9, 4.5); ctx.fill(); 
-                    ctx.beginPath(); ctx.roundRect(-5 + swing, 11, 26, 9, 4.5); ctx.fill();  
-                    
-                    // Gloved Hands
-                    ctx.fillStyle = '#18181b'; 
-                    ctx.beginPath(); ctx.arc(18 - swing, -15.5, 5, 0, Math.PI*2); ctx.fill();
-                    ctx.beginPath(); ctx.arc(20 + swing, 15.5, 5, 0, Math.PI*2); ctx.fill();
-                    
-                    // Tactical Combat Knife
+                    // Sharp Silver Knife in right hand
                     ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 6;
-                    ctx.fillStyle = '#000000'; // Handle
-                    ctx.fillRect(18 + swing, 13, 8, 5);
-                    ctx.fillStyle = '#3f3f46'; // Blade Guard
-                    ctx.fillRect(26 + swing, 11, 2, 9);
-                    
-                    // Metallic Blade
-                    let bladeGrad = ctx.createLinearGradient(28 + swing, 11, 44 + swing, 15);
-                    bladeGrad.addColorStop(0, '#71717a'); bladeGrad.addColorStop(0.5, '#e4e4e7'); bladeGrad.addColorStop(1, '#3f3f46');
-                    ctx.fillStyle = bladeGrad;
-                    ctx.beginPath(); ctx.moveTo(28 + swing, 13); ctx.lineTo(44 + swing, 13); ctx.lineTo(40 + swing, 17); ctx.lineTo(28 + swing, 17); ctx.fill();
-                    
-                    ctx.fillStyle = '#18181b';
-                    for(let i=0; i<3; i++) { ctx.fillRect(30 + swing + i*3, 16, 1, 1); }
+                    ctx.fillStyle = '#e2e8f0'; // Silver blade
+                    ctx.beginPath(); 
+                    ctx.moveTo(18 + swing, 14); 
+                    ctx.lineTo(34 + swing, 13); 
+                    ctx.lineTo(36 + swing, 15); 
+                    ctx.lineTo(18 + swing, 16); 
+                    ctx.fill();
+                    ctx.fillStyle = '#1e293b'; // Handle
+                    ctx.beginPath(); ctx.roundRect(13 + swing, 13.5, 7, 3, 1); ctx.fill();
                     ctx.shadowBlur = 0;
 
-                    // Head
-                    ctx.fillStyle = '#18181b'; // Hood over head
-                    ctx.beginPath(); ctx.arc(2, 0, 13, 0, Math.PI*2); ctx.fill();
-                    ctx.fillStyle = t.skin; // Face peering out more clearly
-                    ctx.beginPath(); ctx.arc(6, 0, 10, -Math.PI*0.4, Math.PI*0.4); ctx.fill();
+                    // Bare Hands
+                    ctx.fillStyle = t.skin; 
+                    ctx.beginPath(); ctx.arc(16 - swing, -15, 4.5, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(16 + swing, 15, 4.5, 0, Math.PI*2); ctx.fill();
                     
-                    // Wrap-around tactical sunglasses
-                    ctx.fillStyle = '#000000';
-                    ctx.beginPath(); ctx.roundRect(11, -7, 5, 14, 2); ctx.fill();
-                    ctx.fillStyle = '#ea580c';
-                    ctx.beginPath(); ctx.roundRect(13, -5, 2, 4, 1); ctx.fill();
-                    ctx.beginPath(); ctx.roundRect(13, 1, 2, 4, 1); ctx.fill();
+                    // Head (Human, uncovered)
+                    ctx.fillStyle = t.skin;
+                    ctx.beginPath(); ctx.arc(4, 0, 11, 0, Math.PI*2); ctx.fill();
+                    
+                    // Hair
+                    ctx.fillStyle = t.hair;
+                    ctx.beginPath(); ctx.arc(3, 0, 12, Math.PI*0.35, Math.PI*1.65); ctx.fill();
                 }
                 else if (t.type === 'old_rusher') {
                     t.trail.forEach((pos, i) => {
@@ -1655,24 +1718,24 @@
                 }
             });
 
-            // Draw Chad (The Main Character)
+            // Draw Greg (The Main Character)
             ctx.save();
             
-            // Player Glow Aura
-            let playerGlow = ctx.createRadialGradient(chad.x, chad.y, 10, chad.x, chad.y, 45);
-            playerGlow.addColorStop(0, 'rgba(56, 189, 248, 0.2)'); 
-            playerGlow.addColorStop(1, 'rgba(56, 189, 248, 0)');
+            // Player Glow Aura (Pink/Blue hue)
+            let playerGlow = ctx.createRadialGradient(chad.x, chad.y, 10, chad.x, chad.y, 50);
+            playerGlow.addColorStop(0, 'rgba(244, 114, 182, 0.2)'); // Pink glow
+            playerGlow.addColorStop(1, 'rgba(244, 114, 182, 0)');
             ctx.fillStyle = playerGlow;
-            ctx.beginPath(); ctx.arc(chad.x, chad.y, 45, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(chad.x, chad.y, 50, 0, Math.PI*2); ctx.fill();
 
-            // Realistic Legs
+            // Realistic Legs (Pink Suit Pants)
             let cLegSwing = Math.sin(chad.walkPhase) * 14;
-            ctx.fillStyle = '#1e40af'; // Blue Jeans
-            ctx.beginPath(); ctx.roundRect(chad.x - 12, chad.y - 4 + cLegSwing, 8, 16, 3); ctx.fill();
-            ctx.beginPath(); ctx.roundRect(chad.x + 4, chad.y - 4 - cLegSwing, 8, 16, 3); ctx.fill();
-            ctx.fillStyle = '#78350f'; // Brown Leather Shoes
-            ctx.beginPath(); ctx.roundRect(chad.x - 13, chad.y + 12 + cLegSwing, 10, 6, 2); ctx.fill();
-            ctx.beginPath(); ctx.roundRect(chad.x + 3, chad.y + 12 - cLegSwing, 10, 6, 2); ctx.fill();
+            ctx.fillStyle = '#f9a8d4'; // Pink Pants
+            ctx.beginPath(); ctx.roundRect(chad.x - 14, chad.y - 4 + cLegSwing, 10, 16, 3); ctx.fill();
+            ctx.beginPath(); ctx.roundRect(chad.x + 4, chad.y - 4 - cLegSwing, 10, 16, 3); ctx.fill();
+            ctx.fillStyle = '#451a03'; // Brown Leather Shoes
+            ctx.beginPath(); ctx.roundRect(chad.x - 15, chad.y + 12 + cLegSwing, 12, 6, 2); ctx.fill();
+            ctx.beginPath(); ctx.roundRect(chad.x + 3, chad.y + 12 - cLegSwing, 12, 6, 2); ctx.fill();
 
             let cBob = Math.abs(Math.sin(chad.walkPhase)) * 3.5;
             ctx.translate(chad.x, chad.y - cBob);
@@ -1680,43 +1743,53 @@
             
             let cSwing = Math.sin(chad.walkPhase) * 12;
             
-            ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 8 + cBob;
+            ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 15; ctx.shadowOffsetY = 6 + cBob;
+            
+            // Plumper Pink Suit Jacket
             let shirtGrad = ctx.createRadialGradient(-2, 0, 0, -2, 0, 18);
-            shirtGrad.addColorStop(0, '#ffffff'); 
-            shirtGrad.addColorStop(0.6, '#f1f5f9');
-            shirtGrad.addColorStop(1, '#94a3b8'); 
+            shirtGrad.addColorStop(0, '#fbcfe8'); 
+            shirtGrad.addColorStop(1, '#f472b6'); // Pink Suit
             
             ctx.fillStyle = shirtGrad; 
-            ctx.beginPath(); ctx.ellipse(-4, 0, 15, 19, 0, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(-5, 0, 20, 23, 0, 0, Math.PI*2); ctx.fill();
             ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
             
-            // Lanyard String
-            ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(-11, -9); ctx.quadraticCurveTo(0, -11, 6, -6); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(-11, 9); ctx.quadraticCurveTo(0, 11, 6, 6); ctx.stroke();
+            // Light Blue Striped Shirt showing in the front (V-neck opening)
+            ctx.fillStyle = '#bae6fd';
+            ctx.beginPath(); ctx.moveTo(4, -10); ctx.lineTo(14, -5); ctx.lineTo(14, 5); ctx.lineTo(4, 10); ctx.fill();
+            ctx.strokeStyle = '#0369a1'; ctx.lineWidth = 0.5;
+            ctx.beginPath(); ctx.moveTo(7, -7); ctx.lineTo(7, 7); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(10, -6); ctx.lineTo(10, 6); ctx.stroke();
 
-            // Arms
+            // Dark Bowtie with Red Dots
+            ctx.fillStyle = '#1e1b4b'; 
+            ctx.beginPath(); ctx.moveTo(16, -6); ctx.lineTo(12, -2); ctx.lineTo(12, 2); ctx.lineTo(16, 6); ctx.fill();
+            ctx.fillStyle = '#ef4444';
+            ctx.beginPath(); ctx.arc(14, -3, 1.2, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(14, 3, 1.2, 0, Math.PI*2); ctx.fill();
+
+            // Arms (Pink Suit Sleeves) - Moved out to accommodate wider body
             let armGrad = ctx.createLinearGradient(-10, 0, 10, 0);
-            armGrad.addColorStop(0, '#f8fafc'); armGrad.addColorStop(1, '#94a3b8');
+            armGrad.addColorStop(0, '#fbcfe8'); armGrad.addColorStop(1, '#f472b6');
             ctx.fillStyle = armGrad; 
-            ctx.beginPath(); ctx.roundRect(-4 - cSwing, -21, 19, 10, 5); ctx.fill(); 
-            ctx.beginPath(); ctx.roundRect(-4 + cSwing, 11, 19, 10, 5); ctx.fill(); 
+            ctx.beginPath(); ctx.roundRect(-5 - cSwing, -24, 21, 11, 5.5); ctx.fill(); 
+            ctx.beginPath(); ctx.roundRect(-5 + cSwing, 13, 21, 11, 5.5); ctx.fill(); 
             
             // Hands
-            let chadHandGrad1 = ctx.createRadialGradient(16 - cSwing, -16, 0, 16 - cSwing, -16, 5);
+            let chadHandGrad1 = ctx.createRadialGradient(18 - cSwing, -19, 0, 18 - cSwing, -19, 5);
             chadHandGrad1.addColorStop(0, '#fcd5ce'); chadHandGrad1.addColorStop(1, '#d9a092');
             ctx.fillStyle = chadHandGrad1;
-            ctx.beginPath(); ctx.arc(16 - cSwing, -16, 5.5, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(18 - cSwing, -19, 5.5, 0, Math.PI*2); ctx.fill();
             
-            let chadHandGrad2 = ctx.createRadialGradient(16 + cSwing, 16, 0, 16 + cSwing, 16, 5);
+            let chadHandGrad2 = ctx.createRadialGradient(18 + cSwing, 19, 0, 18 + cSwing, 19, 5);
             chadHandGrad2.addColorStop(0, '#fcd5ce'); chadHandGrad2.addColorStop(1, '#d9a092');
             ctx.fillStyle = chadHandGrad2;
-            ctx.beginPath(); ctx.arc(16 + cSwing, 16, 5.5, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(18 + cSwing, 19, 5.5, 0, Math.PI*2); ctx.fill();
 
             // Flashlight
             if (isBlackout) {
                 ctx.save();
-                ctx.translate(16 + cSwing, 16);
+                ctx.translate(18 + cSwing, 19);
                 ctx.rotate(0.2);
                 
                 ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 5;
@@ -1731,46 +1804,28 @@
                 ctx.restore();
             }
             
-            // Walkie Talkie
-            ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 5;
-            ctx.strokeStyle = '#1d4ed8'; ctx.lineWidth = 3; 
-            ctx.beginPath(); ctx.moveTo(-6, -10); ctx.quadraticCurveTo(5, 0, -6, 10); ctx.stroke();
-            
-            // ID Badge
-            let badgeGrad = ctx.createLinearGradient(4, -6, 4, 6);
-            badgeGrad.addColorStop(0, '#1e293b'); badgeGrad.addColorStop(1, '#020617');
-            ctx.fillStyle = badgeGrad; 
-            ctx.beginPath(); ctx.roundRect(3, -6, 8, 12, 2); ctx.fill(); 
-            ctx.fillStyle = 'rgba(255,255,255,0.6)';
-            ctx.beginPath(); ctx.roundRect(4, -4, 6, 4, 1); ctx.fill();
-            ctx.shadowBlur = 0;
-
-            // Head (Brown Hair, Short Beard)
-            let chadHeadGrad = ctx.createRadialGradient(6, 0, 0, 2, 0, 13);
+            // Plumper Head (Slicked Dark Hair, Goatee)
+            let chadHeadGrad = ctx.createRadialGradient(7, 0, 0, 2, 0, 15);
             chadHeadGrad.addColorStop(0, '#fcd5ce');
             chadHeadGrad.addColorStop(0.6, '#e8b4a9');
             chadHeadGrad.addColorStop(1, '#b07568'); 
             ctx.fillStyle = chadHeadGrad; 
-            ctx.beginPath(); ctx.arc(4, 0, 12, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(5, 0, 14.5, 0, Math.PI*2); ctx.fill();
 
             // Nose
             ctx.fillStyle = '#d99587';
-            ctx.beginPath(); ctx.ellipse(12, 0, 3, 4, 0, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(14, 0, 3.5, 4.5, 0, 0, Math.PI*2); ctx.fill();
 
-            // Hair
-            ctx.fillStyle = '#4a3018'; 
-            ctx.beginPath(); ctx.arc(2, 0, 13.5, Math.PI*0.4, Math.PI*1.6); ctx.fill();
+            // Hair (Slicked dark brown)
+            ctx.fillStyle = '#291c14'; 
+            ctx.beginPath(); ctx.arc(3, 0, 16, Math.PI*0.4, Math.PI*1.6); ctx.fill();
             
-            ctx.strokeStyle = '#5c3a21'; ctx.lineWidth = 2.5;
-            ctx.beginPath(); ctx.arc(2, 0, 12, Math.PI*0.5, Math.PI*1.5); ctx.stroke();
-            ctx.strokeStyle = '#3a2008'; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.arc(2, 0, 14, Math.PI*0.7, Math.PI*1.3); ctx.stroke();
-            
-            // Beard
-            let beardGrad = ctx.createRadialGradient(9, 0, 5, 9, 0, 13);
-            beardGrad.addColorStop(0, '#3a2008'); beardGrad.addColorStop(1, 'rgba(58, 32, 8, 0)');
+            // Goatee (Wider arc)
+            let beardGrad = ctx.createRadialGradient(12, 0, 2, 12, 0, 9);
+            beardGrad.addColorStop(0, '#291c14'); beardGrad.addColorStop(1, 'rgba(41, 28, 20, 0)');
             ctx.fillStyle = beardGrad;
-            ctx.beginPath(); ctx.arc(8, 0, 12, -Math.PI*0.45, Math.PI*0.45); ctx.fill();
+            ctx.beginPath(); ctx.arc(12, 0, 11, -Math.PI*0.35, Math.PI*0.35); ctx.fill();
+            
             ctx.restore();
 
             // Blackout Flashlight Effect using Composite Operations
